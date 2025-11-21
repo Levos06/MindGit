@@ -1,0 +1,15 @@
+{
+  "id": "bd0a8cb1-fce1-4c37-a356-30e50f91639c",
+  "title": "отказоустойчивость",
+  "parentId": "c907bf8a-f16c-4491-9847-38720f7daa94",
+  "messages": [
+    {
+      "id": "3a927d46-25b9-4e67-acb8-fb289a85648a",
+      "role": "assistant",
+      "content": "отказоустойчивость: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true
+}

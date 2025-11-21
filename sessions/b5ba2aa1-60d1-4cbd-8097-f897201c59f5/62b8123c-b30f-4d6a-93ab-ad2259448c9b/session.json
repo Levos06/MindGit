@@ -1,0 +1,15 @@
+{
+  "id": "62b8123c-b30f-4d6a-93ab-ad2259448c9b",
+  "title": "хеш",
+  "parentId": "b5ba2aa1-60d1-4cbd-8097-f897201c59f5",
+  "messages": [
+    {
+      "id": "f074b050-0192-4a9c-a159-f6310e419bd6",
+      "role": "assistant",
+      "content": "хеш: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true
+}

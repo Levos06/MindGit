@@ -1,0 +1,15 @@
+{
+  "id": "3edcea23-7e02-491c-ad22-879dfb6aa9a6",
+  "title": "Сеть:",
+  "parentId": "c907bf8a-f16c-4491-9847-38720f7daa94",
+  "messages": [
+    {
+      "id": "c238c0be-6eaa-4e1c-8ccd-d54de03e06f7",
+      "role": "assistant",
+      "content": "Сеть:: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true
+}

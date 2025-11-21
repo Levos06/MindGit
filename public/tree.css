@@ -1,0 +1,92 @@
+/* Tree Structure Styling */
+.history-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.history-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border-radius: 6px;
+  padding: 2px 8px 2px 4px; /* Reduced padding for tighter tree look */
+  cursor: pointer;
+  transition: background 0.2s ease;
+  color: var(--muted);
+  height: 32px;
+}
+
+.history-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.history-row.is-active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+/* Toggle button (arrow) */
+.toggle-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+  margin-right: 2px;
+  font-size: 10px;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.toggle-btn.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+/* Spacer when no children, to align with items that have toggles */
+.toggle-spacer {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
+/* The actual clickable label/title */
+.history-item-title {
+  flex: 1;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+
+/* Children container */
+.history-children {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-left: 1px solid var(--border); /* Optional guide line like VS Code */
+  margin-left: 13px; /* Align under the arrow center (approx) */
+  padding-left: 0;
+}
+
+.history-children.is-hidden {
+  display: none;
+}

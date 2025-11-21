@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DeepMinimal Chatbot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./tree.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar__header">
+          <div class="logo-mark">∂</div>
+          <button class="ghost" id="new-chat">New chat</button>
+        </div>
+        <div class="sidebar__list" id="history"></div>
+      </aside>
+
+      <main class="chat-panel">
+        <header class="chat-panel__header">
+          <div class="status-dot"></div>
+          <span>How can I help you?</span>
+        </header>
+        <section class="chat-stream" id="chat-stream"></section>
+        <button class="deep-dive-btn" id="deep-dive" hidden>
+          Углубиться в термины
+        </button>
+        <form class="chat-input" id="chat-form">
+          <textarea
+            id="chat-textarea"
+            placeholder="Message DeepSeek"
+            rows="1"
+            autocomplete="off"
+          ></textarea>
+          <button class="ghost" type="submit" id="send-button" aria-label="Send">
+            ➜
+          </button>
+        </form>
+      </main>
+    </div>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "id": "1a42fd2b-c5e8-4c9e-9adf-2d376c14f59f",
+  "title": "управляет",
+  "parentId": "c907bf8a-f16c-4491-9847-38720f7daa94",
+  "messages": [
+    {
+      "id": "2aabbafa-2728-46d8-ad05-283941db3c25",
+      "role": "assistant",
+      "content": "управляет: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true
+}
