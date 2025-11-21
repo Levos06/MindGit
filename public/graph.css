@@ -42,7 +42,7 @@
 .graph-toggle {
   position: absolute;
   bottom: -30px;
-  left: 50%;
+  left: calc(280px + (100vw - 280px) / 2);
   transform: translateX(-50%);
   width: 120px;
   height: 30px;

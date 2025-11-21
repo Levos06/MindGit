@@ -250,6 +250,8 @@ textarea.addEventListener('keydown', (event) => {
 chatStream.addEventListener('mouseup', handleSelection);
 chatStream.addEventListener('click', handleHighlightClick);
 deepDiveBtn.addEventListener('click', handleDeepDive);
+deepDiveBtn.addEventListener('click', handleDeepDive);
+deepDiveBtn.addEventListener('click', handleDeepDive);
 
 function appendMessage(message) {
   const messageEntry = {
@@ -634,10 +636,10 @@ function escapeHtml(str) {
 
 function toggleDeepDiveButton() {
   const count = activeConversation.pendingFragments?.length || 0;
-  if (count > 0) {
+  if (count > 0 && deepDiveBtn) {
     deepDiveBtn.hidden = false;
     deepDiveBtn.textContent = `Углубиться в термины (${count})`;
-  } else {
+  } else if (deepDiveBtn) {
     deepDiveBtn.hidden = true;
   }
 }

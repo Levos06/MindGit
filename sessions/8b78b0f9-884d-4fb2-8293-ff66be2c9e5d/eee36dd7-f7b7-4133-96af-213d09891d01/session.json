@@ -1,0 +1,18 @@
+{
+  "id": "eee36dd7-f7b7-4133-96af-213d09891d01",
+  "title": "операция",
+  "parentId": "8b78b0f9-884d-4fb2-8293-ff66be2c9e5d",
+  "messages": [
+    {
+      "id": "04f75ee6-09fe-4602-8176-9ad161c520cd",
+      "role": "assistant",
+      "content": "операция: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true,
+  "summary": "The user is asking for clarification on the term \"операция\". The assistant is asking if the user needs a full explanation of the term or has a specific question about a particular part of it.",
+  "originTerm": "операция",
+  "lastSummarizedMessageCount": 1
+}
