@@ -35,17 +35,12 @@ app.use(express.static('public'));
 async function findSessionPath(sessionId, currentDir = SESSIONS_DIR) {
   const entries = await fs.readdir(currentDir, { withFileTypes: true });
   
-  // Check if this current directory IS the session (if it has session.json and the id matches)
-  // But we search by name of the folder.
-  
   for (const entry of entries) {
     if (entry.isDirectory()) {
       if (entry.name === sessionId) {
         return path.join(currentDir, sessionId);
       }
       // Recursive search in subdirectories
-      // In the new fractal structure, any subdirectory could be a child session.
-      // We need to search inside it.
       const subDirPath = path.join(currentDir, entry.name);
       const found = await findSessionPath(sessionId, subDirPath);
       if (found) return found;
@@ -69,14 +64,12 @@ async function getAllSessions(dir = SESSIONS_DIR) {
         
         sessions.push(session);
         
-        // Recursively get children (which are just subdirectories in this folder)
+        // Recursively get children
         const children = await getAllSessions(sessionPath);
         sessions.push(...children);
         
       } catch (err) {
-        // It might be a directory that is not a session (though we only create sessions there)
-        // or a session.json might be missing/corrupt
-        // console.warn(`Skipping folder without valid session.json: ${entry.name}`);
+        // Skip invalid folders
       }
     }
   }
@@ -95,31 +88,26 @@ app.get('/api/sessions', async (req, res) => {
 
 app.post('/api/sessions', async (req, res) => {
   try {
-    const { id, title, parentId, messages, pendingFragments, isExpanded } = req.body;
+    const { id, title, parentId, messages, pendingFragments, isExpanded, summary } = req.body;
     const sessionId = id;
     
     let targetDir = SESSIONS_DIR;
     if (parentId) {
       const parentPath = await findSessionPath(parentId);
       if (!parentPath) {
-        // If parent not found, we can't create child.
-        // However, for "new chats" that are children, maybe parent is not saved yet?
-        // The frontend ensures parent is saved before children.
         return res.status(404).json({ error: 'Parent session not found' });
       }
-      // New structure: Child folder is directly inside parent folder
       targetDir = parentPath;
     }
 
     const sessionDir = path.join(targetDir, sessionId);
-    // Check if exists, if not mkdir
     try {
       await fs.access(sessionDir);
     } catch {
       await fs.mkdir(sessionDir, { recursive: true });
     }
     
-    const sessionData = { id, title, parentId, messages, pendingFragments, isExpanded };
+    const sessionData = { id, title, parentId, messages, pendingFragments, isExpanded, summary };
     await fs.writeFile(
       path.join(sessionDir, 'session.json'), 
       JSON.stringify(sessionData, null, 2)
@@ -143,6 +131,68 @@ app.delete('/api/sessions/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting session:', error);
     res.status(500).json({ error: 'Failed to delete session' });
+  }
+});
+
+app.post('/api/sessions/:id/summarize', async (req, res) => {
+  try {
+    const sessionId = req.params.id;
+    const sessionPath = await findSessionPath(sessionId);
+    
+    if (!sessionPath) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    const jsonPath = path.join(sessionPath, 'session.json');
+    const content = await fs.readFile(jsonPath, 'utf-8');
+    const session = JSON.parse(content);
+
+    if (!session.messages || session.messages.length === 0) {
+      return res.json({ summary: '' });
+    }
+
+    // Prepare messages for summarization
+    const textToSummarize = session.messages
+      .map(m => `${m.role}: ${m.content}`)
+      .join('\n');
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        'HTTP-Referer': 'https://example.com',
+        'X-Title': 'Minimalist Chatbot'
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash-lite',
+        messages: [
+          {
+            role: "user",
+            content: `Summarize the following conversation briefly in three or four sentences (in Russian if the content is Russian):\n\n${textToSummarize}`
+          }
+        ],
+        temperature: 0.5,
+        max_tokens: 200
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('OpenRouter request failed during summarization');
+    }
+
+    const data = await response.json();
+    const summary = data.choices?.[0]?.message?.content || '';
+
+    // Update session
+    session.summary = summary;
+    await fs.writeFile(jsonPath, JSON.stringify(session, null, 2));
+
+    res.json({ success: true, summary });
+
+  } catch (error) {
+    console.error('Error summarizing session:', error);
+    res.status(500).json({ error: 'Failed to summarize session' });
   }
 });
 

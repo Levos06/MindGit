@@ -5,6 +5,7 @@ const textarea = document.getElementById('chat-textarea');
 const newChatBtn = document.getElementById('new-chat');
 const sendBtn = document.getElementById('send-button');
 const deepDiveBtn = document.getElementById('deep-dive');
+const contextToast = document.getElementById('context-toast');
 
 // State
 let conversations = [];
@@ -41,7 +42,8 @@ function createEmptyConversation() {
     messages: [],
     pendingFragments: [],
     parentId: null,
-    isExpanded: true
+    isExpanded: true,
+    summary: ''
   };
 }
 
@@ -70,7 +72,54 @@ async function saveSession(session) {
   }
 }
 
+async function triggerSummarization(sessionId) {
+  const session = conversations.find(c => c.id === sessionId);
+  if (!session || session.messages.length === 0) return;
+
+  try {
+    showContextToast(true);
+    const res = await fetch(`/api/sessions/${sessionId}/summarize`, {
+      method: 'POST'
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      session.summary = data.summary;
+    }
+  } catch (err) {
+    console.error('Failed to summarize session', err);
+  } finally {
+    showContextToast(false);
+  }
+}
+
 // --- UI Logic ---
+
+function showContextToast(show) {
+  if (show) {
+    contextToast.hidden = false;
+  } else {
+    // Small delay for smooth UX
+    setTimeout(() => {
+      contextToast.hidden = true;
+    }, 300);
+  }
+}
+
+async function switchConversation(newConversation) {
+  // Only trigger summarization if we're actually switching between different conversations
+  if (activeConversation && 
+      activeConversation.id !== newConversation.id && 
+      activeConversation.messages.length > 0) {
+    // Trigger summary for the OLD conversation
+    // Don't await it, let it run in background
+    triggerSummarization(activeConversation.id);
+  }
+
+  activeConversation = newConversation;
+  updateHistory();
+  renderConversation();
+}
 
 const textareaAutoResize = () => {
   textarea.style.height = 'auto';
@@ -79,11 +128,9 @@ const textareaAutoResize = () => {
 textarea.addEventListener('input', textareaAutoResize);
 
 newChatBtn.addEventListener('click', async () => {
-  activeConversation = createEmptyConversation();
-  conversations = [activeConversation, ...conversations];
-  // Don't save to disk yet, only in memory
-  updateHistory();
-  renderConversation();
+  const newChat = createEmptyConversation();
+  conversations = [newChat, ...conversations];
+  await switchConversation(newChat);
   textarea.focus();
 });
 
@@ -107,9 +154,6 @@ form.addEventListener('submit', async (event) => {
   
   // Save state to disk
   await saveSession(activeConversation);
-  
-  // If this was a freshly created session in memory, we need to reload/resync or just proceed.
-  // The simplest is to keep in-memory sync.
   updateHistory(); // refresh titles
 
   const payload = [...activeConversation.messages];
@@ -171,8 +215,6 @@ function renderConversation() {
 }
 
 function updateHistory() {
-  // We need to render the tree recursively.
-  // First, find roots (items with no parentId)
   const roots = conversations.filter(c => !c.parentId);
   
   const treeContainer = document.createElement('div');
@@ -192,28 +234,22 @@ function renderTreeItem(conversation) {
   const row = document.createElement('div');
   row.className = 'history-row' + (conversation.id === activeConversation.id ? ' is-active' : '');
   
-  // Click on row activates chat
   row.addEventListener('click', (e) => {
-    // If we clicked toggle, don't activate
     if (e.target.closest('.toggle-btn')) return;
-    
-    activeConversation = conversation;
-    updateHistory();
-    renderConversation();
+    switchConversation(conversation);
   });
 
-  // Find children
   const children = conversations.filter(c => c.parentId === conversation.id);
   const hasChildren = children.length > 0;
 
   if (hasChildren) {
     const toggle = document.createElement('button');
     toggle.className = 'toggle-btn' + (conversation.isExpanded ? '' : ' is-collapsed');
-    toggle.innerHTML = '▼'; // Could use SVG chevron
+    toggle.innerHTML = '▼'; 
     toggle.onclick = async (e) => {
       e.stopPropagation();
       conversation.isExpanded = !conversation.isExpanded;
-      await saveSession(conversation); // persist expansion state
+      await saveSession(conversation); 
       updateHistory();
     };
     row.appendChild(toggle);
@@ -222,9 +258,6 @@ function renderTreeItem(conversation) {
     spacer.className = 'toggle-spacer';
     row.appendChild(spacer);
   }
-
-  // Icon could go here (folder/chat icon)
-  // const icon = document.createElement('span'); ...
 
   const title = document.createElement('span');
   title.className = 'history-item-title';
@@ -237,7 +270,6 @@ function renderTreeItem(conversation) {
     const childrenContainer = document.createElement('div');
     childrenContainer.className = 'history-children' + (conversation.isExpanded ? '' : ' is-hidden');
     
-    // Recursive call for children
     children.forEach(child => {
       childrenContainer.appendChild(renderTreeItem(child));
     });
@@ -316,7 +348,6 @@ function handleSelection() {
     text: fragmentText
   });
 
-  // Save highlight
   saveSession(activeConversation);
 
   renderConversation();
@@ -409,14 +440,16 @@ async function handleDeepDive() {
   activeConversation.pendingFragments = [];
   activeConversation.isExpanded = true; 
   
-  // Save parent update
   await saveSession(activeConversation);
-  
-  // Save all children
   await Promise.all(newConversations.map(saveSession));
   
-  // Update local state
   conversations = [...conversations, ...newConversations];
+
+  // Trigger summary for parent before switching to child (as per logic "updating context" on leave)
+  // Only if parent has messages
+  if (activeConversation.messages.length > 0) {
+    triggerSummarization(activeConversation.id);
+  }
 
   updateHistory();
   activeConversation = newConversations[0];
