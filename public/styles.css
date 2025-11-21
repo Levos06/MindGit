@@ -119,10 +119,30 @@ textarea {
   height: 100vh;
   overflow: hidden;
   grid-column: 2;
-  padding-right: 48px;
+  padding-right: 64px; /* Increased right padding for scrollbar space */
   width: 80%;
   margin: 0 auto;
   border-right: none;
+}
+
+/* Custom Scrollbar */
+.chat-stream::-webkit-scrollbar {
+  width: 6px;
+  position: absolute;
+  right: 0;
+}
+
+.chat-stream::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-stream::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.chat-stream::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .chat-panel__header {
