@@ -34,6 +34,7 @@ textarea {
   display: grid;
   grid-template-columns: 280px 1fr;
   height: 100vh;
+  column-gap: 0;
 }
 
 .sidebar {
@@ -44,6 +45,7 @@ textarea {
   padding: 32px 24px;
   gap: 24px;
   height: 100vh;
+  grid-column: 1;
 }
 
 .sidebar__header {
@@ -116,15 +118,22 @@ textarea {
   gap: 24px;
   height: 100vh;
   overflow: hidden;
+  grid-column: 2;
+  padding-right: 48px;
 }
 
 .chat-panel__header {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 12px;
   font-size: 20px;
   font-weight: 500;
   color: var(--muted);
+  justify-content: space-between;
+}
+
+.chat-panel__header > span {
+  flex: 1;
 }
 
 .status-dot {
@@ -143,12 +152,13 @@ textarea {
   gap: 16px;
   overflow-y: auto;
   padding-bottom: 32px;
+  background: transparent;
 }
 
 .deep-dive-btn {
   border: 1px solid rgba(78, 156, 255, 0.6);
   color: var(--text);
-  background: linear-gradient(120deg, rgba(75, 141, 255, 0.2), rgba(124, 58, 237, 0.2));
+  background: transparent;
   border-radius: 18px;
   padding: 12px 24px;
   font-size: 14px;
@@ -163,30 +173,159 @@ textarea {
   border-color: rgba(78, 156, 255, 0.9);
 }
 
+.parent-chat-btn {
+  border: 1px solid rgba(156, 163, 175, 0.3);
+  color: var(--muted);
+  background: rgba(17, 24, 39, 0.6);
+  border-radius: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.parent-chat-btn[hidden] {
+  display: none !important;
+}
+
+.parent-chat-btn:hover {
+  background: rgba(31, 41, 55, 0.8);
+  border-color: rgba(156, 163, 175, 0.5);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
 .message mark {
   background: rgba(78, 156, 255, 0.35);
   border-radius: 6px;
   padding: 0 2px;
+  position: relative;
+  display: inline-block;
+}
+
+.message mark.highlight--pending {
+  padding-right: 22px;
+}
+
+.message mark.highlight-clickable {
+  cursor: pointer;
+  background: rgba(78, 156, 255, 0.5);
+  border-bottom: 2px solid rgba(78, 156, 255, 0.8);
+  transition: all 0.2s ease;
+}
+
+.message mark.highlight-clickable:hover {
+  background: rgba(78, 156, 255, 0.7);
+  border-bottom-color: rgba(78, 156, 255, 1);
+  transform: translateY(-1px);
+}
+
+.highlight-remove-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.2s ease;
+  font-weight: bold;
+  z-index: 10;
+}
+
+.highlight-remove-btn:hover {
+  background: rgba(220, 38, 38, 1);
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+}
+
+.highlight-remove-btn:active {
+  transform: scale(0.95);
 }
 
 .message {
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.message--user {
+  justify-content: flex-end;
+}
+
+.message__body {
   padding: 18px 20px;
   border-radius: 18px;
-  max-width: 70ch;
+  max-width: min(70ch, 80%);
   line-height: 1.5;
   font-size: 15px;
   border: 1px solid rgba(255, 255, 255, 0.05);
   background: rgba(255, 255, 255, 0.02);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.15);
 }
 
-.message--user {
-  align-self: flex-end;
-  background: rgba(37, 99, 235, 0.2);
+.message--bot .message__body {
+  width: 100%;
+  max-width: 100%;
+  padding: 0 0 32px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.message--user .message__body {
+  background: rgba(37, 99, 235, 0.18);
   border-color: rgba(37, 99, 235, 0.35);
 }
 
-.message--bot {
-  align-self: flex-start;
+.message__body p {
+  margin: 0 0 0.75em;
+}
+
+.message__body p:last-child {
+  margin-bottom: 0;
+}
+
+.message__body ul,
+.message__body ol {
+  margin: 0 0 0.75em 1rem;
+  padding-left: 1rem;
+}
+
+.message__body pre {
+  background: rgba(15, 23, 42, 0.7);
+  border-radius: 12px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.message__body code {
+  background: rgba(37, 99, 235, 0.15);
+  border-radius: 6px;
+  padding: 0 6px;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 13px;
+}
+
+.message__body pre code {
+  padding: 0;
+  background: transparent;
 }
 
 .chat-input {

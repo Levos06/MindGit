@@ -7,9 +7,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./tree.css" />
     <link rel="stylesheet" href="./graph.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" defer></script>
   </head>
   <body>
     <!-- Graph Curtain -->
@@ -37,6 +42,9 @@
         <header class="chat-panel__header">
           <div class="status-dot"></div>
           <span>How can I help you?</span>
+          <button class="parent-chat-btn" id="parent-chat-btn" hidden title="Вернуться к родительскому чату">
+            ↑ Родительский чат
+          </button>
         </header>
         <section class="chat-stream" id="chat-stream"></section>
         <button class="deep-dive-btn" id="deep-dive" hidden>
@@ -45,7 +53,7 @@
         <form class="chat-input" id="chat-form">
           <textarea
             id="chat-textarea"
-            placeholder="Message DeepSeek"
+            placeholder="Message MindGit"
             rows="1"
             autocomplete="off"
           ></textarea>

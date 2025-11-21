@@ -5,14 +5,41 @@ const textarea = document.getElementById('chat-textarea');
 const newChatBtn = document.getElementById('new-chat');
 const sendBtn = document.getElementById('send-button');
 const deepDiveBtn = document.getElementById('deep-dive');
+const parentChatBtn = document.getElementById('parent-chat-btn');
 const contextToast = document.getElementById('context-toast');
 const graphCurtain = document.getElementById('graph-curtain');
 const graphToggle = document.getElementById('graph-toggle');
 const graphSvg = document.getElementById('graph-svg');
+const graphContainer = document.getElementById('graph-container');
 
 // State
 let conversations = [];
 let activeConversation = null;
+const GRAPH_MARGIN = 60;
+const WHEEL_DEADZONE = 1.5;
+let graphPan = { x: 0, y: 0 };
+let graphPanInitialized = false;
+let graphDragInitialized = false;
+let graphPanLimits = {
+  minX: 0,
+  maxX: 0,
+  minY: 0,
+  maxY: 0
+};
+const markdownParser = window.marked || null;
+if (markdownParser?.setOptions) {
+  markdownParser.setOptions({
+    gfm: true,
+    breaks: true,
+    headerIds: false,
+    mangle: false
+  });
+}
+const htmlSanitizer = window.DOMPurify || null;
+const MARKDOWN_SANITIZE_CONFIG = {
+  ADD_ATTR: ['data-highlight-id', 'title'],
+  ADD_TAGS: ['mark', 'button']
+};
 
 // --- Initialization ---
 (async () => {
@@ -34,6 +61,7 @@ let activeConversation = null;
   
   updateHistory();
   renderConversation();
+  updateParentChatButton();
 })();
 
 // --- Data Helpers ---
@@ -136,6 +164,7 @@ async function switchConversation(newConversation) {
   activeConversation = newConversation;
   updateHistory();
   renderConversation();
+  updateParentChatButton();
 }
 
 const textareaAutoResize = () => {
@@ -149,6 +178,15 @@ newChatBtn.addEventListener('click', async () => {
   conversations = [newChat, ...conversations];
   await switchConversation(newChat);
   textarea.focus();
+});
+
+parentChatBtn.addEventListener('click', () => {
+  if (activeConversation?.parentId) {
+    const parentConversation = conversations.find(c => c.id === activeConversation.parentId);
+    if (parentConversation) {
+      switchConversation(parentConversation);
+    }
+  }
 });
 
 form.addEventListener('submit', async (event) => {
@@ -202,7 +240,15 @@ form.addEventListener('submit', async (event) => {
   }
 });
 
+textarea.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+    event.preventDefault();
+    form.requestSubmit();
+  }
+});
+
 chatStream.addEventListener('mouseup', handleSelection);
+chatStream.addEventListener('click', handleHighlightClick);
 deepDiveBtn.addEventListener('click', handleDeepDive);
 
 function appendMessage(message) {
@@ -223,11 +269,19 @@ function renderConversation() {
       const bubble = document.createElement('div');
       bubble.className = `message message--${message.role === 'user' ? 'user' : 'bot'}`;
       bubble.dataset.messageId = message.id;
-      if (message.role === 'assistant' && message.highlights?.length) {
-        bubble.innerHTML = renderHighlightedText(message.content, message.highlights);
+      const html = renderMessageHtml(message);
+      const body = document.createElement('div');
+      body.className = 'message__body';
+      if (html !== null) {
+        body.innerHTML = html;
+        renderMathIfAvailable(body);
+        if (message.role === 'assistant') {
+          applyHighlightsToElement(body, message);
+        }
       } else {
-        bubble.textContent = message.content;
+        body.textContent = message.content;
       }
+      bubble.appendChild(body);
       return bubble;
     })
   );
@@ -340,7 +394,7 @@ function handleSelection() {
     return;
   }
 
-  const offsets = getOffsets(range, bubble);
+  const offsets = getDisplayOffsets(range, bubble);
   if (!offsets) {
     selection.removeAllRanges();
     return;
@@ -351,7 +405,7 @@ function handleSelection() {
     return;
   }
 
-  const fragmentText = message.content.slice(offsets.start, offsets.end).trim();
+  const fragmentText = selection.toString().trim();
   if (!fragmentText) {
     selection.removeAllRanges();
     return;
@@ -359,7 +413,14 @@ function handleSelection() {
 
   message.highlights = message.highlights || [];
   const highlightId = crypto.randomUUID();
-  message.highlights.push({ id: highlightId, start: offsets.start, end: offsets.end });
+  message.highlights.push({
+    id: highlightId,
+    start: offsets.start,
+    end: offsets.end,
+    displayStart: offsets.start,
+    displayEnd: offsets.end,
+    text: fragmentText
+  });
 
   activeConversation.pendingFragments = activeConversation.pendingFragments || [];
   activeConversation.pendingFragments.push({
@@ -374,7 +435,69 @@ function handleSelection() {
   selection.removeAllRanges();
 }
 
-function getOffsets(range, container) {
+function handleHighlightClick(e) {
+  // Handle remove button click
+  const removeBtn = e.target.closest('.highlight-remove-btn');
+  if (removeBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const highlightId = removeBtn.dataset.highlightId;
+    if (!highlightId) return;
+    
+    const bubble = removeBtn.closest('.message--bot');
+    if (!bubble || !bubble.dataset.messageId) return;
+    
+    const message = activeConversation.messages.find(msg => msg.id === bubble.dataset.messageId);
+    if (!message) return;
+    
+    // Remove highlight from message
+    message.highlights = message.highlights?.filter(h => h.id !== highlightId) || [];
+    
+    // Remove from pending fragments
+    activeConversation.pendingFragments = activeConversation.pendingFragments?.filter(f => f.id !== highlightId) || [];
+    
+    saveSession(activeConversation);
+    renderConversation();
+    return;
+  }
+  
+  // Handle click on highlighted text
+  const mark = e.target.closest('mark[data-highlight-id]');
+  if (!mark) return;
+  
+  const highlightId = mark.dataset.highlightId;
+  if (!highlightId) return;
+  
+  const bubble = mark.closest('.message--bot');
+  if (!bubble || !bubble.dataset.messageId) return;
+  
+  const message = activeConversation.messages.find(msg => msg.id === bubble.dataset.messageId);
+  if (!message) return;
+  
+  // Find the highlight to get the text
+  const highlight = message.highlights?.find(h => h.id === highlightId);
+  if (!highlight) return;
+  const highlightText = highlight.text ||
+    message.content.slice(
+      Math.max(0, highlight.start || 0),
+      Math.max(0, highlight.end || 0)
+    ).trim();
+  
+  // Find child conversation with matching originTerm
+  const childConversation = conversations.find(c => 
+    c.parentId === activeConversation.id && 
+    c.originTerm === highlightText
+  );
+  
+  if (childConversation) {
+    e.preventDefault();
+    mark.style.cursor = 'pointer';
+    switchConversation(childConversation);
+  }
+}
+
+function getDisplayOffsets(range, container) {
   if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) return null;
 
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
@@ -384,6 +507,9 @@ function getOffsets(range, container) {
 
   while (walker.nextNode()) {
     const node = walker.currentNode;
+    if (node.parentElement?.closest('.highlight-remove-btn')) {
+      continue; // ignore text inside control buttons
+    }
     const length = node.textContent.length;
     if (node === range.startContainer) {
       start = cursor + range.startOffset;
@@ -401,7 +527,70 @@ function getOffsets(range, container) {
   return { start: normalizedStart, end: normalizedEnd };
 }
 
-function renderHighlightedText(text, highlights) {
+function renderMessageHtml(message) {
+  const parser = markdownParser;
+  const purifier = htmlSanitizer;
+  const supportsMarkdown = Boolean(parser && purifier);
+  const baseText = message.content || '';
+  
+  const needsLegacyHighlighting = message.role === 'assistant' &&
+    message.highlights?.some(h => h.displayStart == null);
+  
+  if (supportsMarkdown) {
+    let markdownSource = baseText;
+    if (needsLegacyHighlighting) {
+      markdownSource = buildHighlightedMarkdown(baseText, message.highlights);
+    }
+    const rawHtml = parser.parse(markdownSource);
+    return purifier.sanitize(rawHtml, MARKDOWN_SANITIZE_CONFIG);
+  }
+  
+  if (needsLegacyHighlighting) {
+    return renderLegacyHighlightedText(baseText, message.highlights);
+  }
+  
+  return escapeHtml(baseText).replace(/\n/g, '<br>');
+}
+
+function buildHighlightedMarkdown(text, highlights) {
+  text = text ?? '';
+  const legacy = (highlights || []).filter(h => h.displayStart == null && Number.isFinite(h.start) && Number.isFinite(h.end));
+  if (!legacy.length) return text;
+  const safeHighlights = [...legacy].sort((a, b) => a.start - b.start);
+  let cursor = 0;
+  let result = '';
+  const pendingSet = new Set((activeConversation.pendingFragments || []).map(f => f.id));
+
+  safeHighlights.forEach((highlight) => {
+    const start = Math.max(0, Math.min(highlight.start, text.length));
+    const end = Math.max(start, Math.min(highlight.end, text.length));
+    const fragment = text.slice(start, end);
+    const trimmed = fragment.trim();
+    
+    const hasChildChat = conversations.some(c =>
+      c.parentId === activeConversation.id &&
+      c.originTerm === trimmed
+    );
+    const isPending = pendingSet.has(highlight.id);
+    const clickableClass = hasChildChat ? ' highlight-clickable' : '';
+    const pendingClass = isPending ? ' highlight--pending' : '';
+    const title = hasChildChat ? 'Перейти в дочерний чат' : '';
+    
+    result += text.slice(cursor, start);
+    result += `<mark data-highlight-id="${highlight.id}" class="highlight${clickableClass}${pendingClass}" title="${title}">${fragment}`;
+    if (isPending) {
+      result += `<button class="highlight-remove-btn" data-highlight-id="${highlight.id}" title="Отменить выделение">×</button>`;
+    }
+    result += `</mark>`;
+    cursor = end;
+  });
+
+  result += text.slice(cursor);
+  return result;
+}
+
+function renderLegacyHighlightedText(text, highlights) {
+  text = text ?? '';
   const safeHighlights = [...highlights].sort((a, b) => a.start - b.start);
   let cursor = 0;
   let html = '';
@@ -409,8 +598,24 @@ function renderHighlightedText(text, highlights) {
   safeHighlights.forEach((highlight) => {
     const start = Math.max(0, Math.min(highlight.start, text.length));
     const end = Math.max(start, Math.min(highlight.end, text.length));
+    const highlightText = text.slice(start, end).trim();
+    
+    const hasChildChat = conversations.some(c => 
+      c.parentId === activeConversation.id && 
+      c.originTerm === highlightText
+    );
+    const isPending = activeConversation.pendingFragments?.some(f => f.id === highlight.id);
+    
+    const clickableClass = hasChildChat ? ' highlight-clickable' : '';
+    const pendingClass = isPending ? ' highlight--pending' : '';
+    const title = hasChildChat ? 'Перейти в дочерний чат' : '';
+    
     html += escapeHtml(text.slice(cursor, start));
-    html += `<mark data-highlight-id=\"${highlight.id}\">${escapeHtml(text.slice(start, end))}</mark>`;
+    html += `<mark data-highlight-id="${highlight.id}" class="highlight${clickableClass}${pendingClass}" title="${title}">${escapeHtml(text.slice(start, end))}`;
+    if (isPending) {
+      html += `<button class="highlight-remove-btn" data-highlight-id="${highlight.id}" title="Отменить выделение">×</button>`;
+    }
+    html += `</mark>`;
     cursor = end;
   });
 
@@ -434,6 +639,16 @@ function toggleDeepDiveButton() {
     deepDiveBtn.textContent = `Углубиться в термины (${count})`;
   } else {
     deepDiveBtn.hidden = true;
+  }
+}
+
+function updateParentChatButton() {
+  if (!parentChatBtn || !activeConversation) return;
+  
+  if (activeConversation.parentId) {
+    parentChatBtn.hidden = false;
+  } else {
+    parentChatBtn.hidden = true;
   }
 }
 
@@ -477,6 +692,7 @@ async function handleDeepDive() {
   updateHistory();
   activeConversation = newConversations[0];
   renderConversation();
+  updateParentChatButton();
 }
 
 // --- Graph Visualization ---
@@ -485,13 +701,14 @@ graphToggle.addEventListener('click', () => {
   graphCurtain.classList.toggle('is-open');
   if (graphCurtain.classList.contains('is-open')) {
     renderGraph();
+    enableGraphDragging();
   }
 });
 
 function renderGraph() {
-  const container = document.querySelector('.graph-container');
-  const containerWidth = container.clientWidth;
-  const containerHeight = container.clientHeight;
+  if (!graphContainer) return;
+  const containerWidth = graphContainer.clientWidth;
+  const containerHeight = graphContainer.clientHeight;
   
   // Clear existing content
   graphSvg.innerHTML = '';
@@ -639,6 +856,15 @@ function renderGraph() {
   graphSvg.setAttribute('width', svgWidth);
   graphSvg.setAttribute('height', svgHeight);
   
+  updateGraphPanLimits(containerWidth, containerHeight, svgWidth, svgHeight);
+  
+  if (!graphPanInitialized) {
+    graphPan.x = (containerWidth - svgWidth) / 2;
+    graphPan.y = Math.min(GRAPH_MARGIN, (containerHeight - svgHeight) / 2);
+    graphPanInitialized = true;
+  }
+  applyGraphTransform();
+  
   // Draw edges first (so they appear behind nodes)
   conversations.forEach(node => {
     if (node.parentId) {
@@ -702,4 +928,175 @@ function renderGraph() {
     
     graphSvg.appendChild(group);
   });
+}
+
+function applyGraphTransform() {
+  if (!graphSvg) return;
+  clampGraphPan();
+  graphSvg.style.transform = `translate(${graphPan.x}px, ${graphPan.y}px)`;
+}
+
+function clampGraphPan() {
+  graphPan.x = Math.min(Math.max(graphPan.x, graphPanLimits.minX), graphPanLimits.maxX);
+  graphPan.y = Math.min(Math.max(graphPan.y, graphPanLimits.minY), graphPanLimits.maxY);
+}
+
+function renderMathIfAvailable(element) {
+  if (window.renderMathInElement) {
+    window.renderMathInElement(element, {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '\\[', right: '\\]', display: true },
+        { left: '$', right: '$', display: false },
+        { left: '\\(', right: '\\)', display: false }
+      ],
+      throwOnError: false
+    });
+  }
+}
+
+function applyHighlightsToElement(container, message) {
+  const highlights = (message.highlights || []).filter(h =>
+    Number.isFinite(h.displayStart) && Number.isFinite(h.displayEnd) && h.displayEnd > h.displayStart
+  );
+  if (!highlights.length) return;
+
+  const pendingIds = new Set((activeConversation.pendingFragments || []).map(f => f.id));
+  const sorted = [...highlights].sort((a, b) => b.displayStart - a.displayStart);
+
+  sorted.forEach(highlight => {
+    const startPos = findTextPosition(container, highlight.displayStart);
+    const endPos = findTextPosition(container, highlight.displayEnd);
+    if (!startPos || !endPos) return;
+
+    const range = document.createRange();
+    range.setStart(startPos.node, startPos.offset);
+    range.setEnd(endPos.node, endPos.offset);
+
+    const mark = document.createElement('mark');
+    mark.dataset.highlightId = highlight.id;
+    mark.classList.add('highlight');
+
+    const isPending = pendingIds.has(highlight.id);
+    if (isPending) {
+      mark.classList.add('highlight--pending');
+    }
+
+    if (highlightHasChildChat(highlight)) {
+      mark.classList.add('highlight-clickable');
+      mark.title = 'Перейти в дочерний чат';
+    }
+
+    const contents = range.extractContents();
+    mark.appendChild(contents);
+
+    if (isPending) {
+      const button = document.createElement('button');
+      button.className = 'highlight-remove-btn';
+      button.dataset.highlightId = highlight.id;
+      button.title = 'Отменить выделение';
+      button.textContent = '×';
+      mark.appendChild(button);
+    }
+
+    range.insertNode(mark);
+  });
+}
+
+function findTextPosition(container, targetIndex) {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+  let cursor = 0;
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (node.parentElement?.closest('.highlight-remove-btn')) continue;
+    const length = node.textContent.length;
+    if (targetIndex <= cursor + length) {
+      return { node, offset: targetIndex - cursor };
+    }
+    cursor += length;
+  }
+  return null;
+}
+
+function highlightHasChildChat(highlight) {
+  if (!highlight?.text) return false;
+  return conversations.some(c =>
+    c.parentId === activeConversation?.id &&
+    c.originTerm === highlight.text
+  );
+}
+
+function updateGraphPanLimits(containerWidth, containerHeight, svgWidth, svgHeight) {
+  const marginX = Math.max(GRAPH_MARGIN, containerWidth / 2);
+  const marginY = Math.max(GRAPH_MARGIN, containerHeight / 2);
+  
+  if (svgWidth <= containerWidth) {
+    const centered = (containerWidth - svgWidth) / 2;
+    graphPanLimits.minX = graphPanLimits.maxX = centered;
+  } else {
+    graphPanLimits.maxX = marginX;
+    graphPanLimits.minX = containerWidth - svgWidth - marginX;
+  }
+  
+  if (svgHeight <= containerHeight) {
+    const centeredY = (containerHeight - svgHeight) / 2;
+    graphPanLimits.minY = graphPanLimits.maxY = centeredY;
+  } else {
+    graphPanLimits.maxY = marginY;
+    graphPanLimits.minY = containerHeight - svgHeight - marginY;
+  }
+}
+
+function enableGraphDragging() {
+  if (graphDragInitialized || !graphContainer) return;
+  graphDragInitialized = true;
+  
+  let isDragging = false;
+  let startX = 0;
+  let startY = 0;
+  
+  const onMouseDown = (e) => {
+    if (!graphCurtain.classList.contains('is-open')) return;
+    if (e.button !== 0) return;
+    // allow node clicks to switch chats
+    if (e.target.closest('.graph-node-group')) return;
+    isDragging = true;
+    graphContainer.style.cursor = 'grabbing';
+    startX = e.clientX - graphPan.x;
+    startY = e.clientY - graphPan.y;
+    e.preventDefault();
+  };
+  
+  const endDrag = () => {
+    if (!isDragging) return;
+    isDragging = false;
+    graphContainer.style.cursor = 'grab';
+  };
+  
+  const onMouseMove = (e) => {
+    if (!graphCurtain.classList.contains('is-open')) return;
+    if (!isDragging) return;
+    graphPan.x = e.clientX - startX;
+    graphPan.y = e.clientY - startY;
+    applyGraphTransform();
+  };
+  
+  const onWheel = (e) => {
+    if (!graphCurtain.classList.contains('is-open')) return;
+    e.preventDefault();
+    const deltaX = e.deltaX;
+    const deltaY = e.deltaY;
+    if (Math.abs(deltaX) < WHEEL_DEADZONE && Math.abs(deltaY) < WHEEL_DEADZONE) {
+      return;
+    }
+    graphPan.x -= deltaX;
+    graphPan.y -= deltaY;
+    applyGraphTransform();
+  };
+  
+  graphContainer.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', endDrag);
+  graphContainer.addEventListener('mouseleave', endDrag);
+  graphContainer.addEventListener('wheel', onWheel, { passive: false });
 }

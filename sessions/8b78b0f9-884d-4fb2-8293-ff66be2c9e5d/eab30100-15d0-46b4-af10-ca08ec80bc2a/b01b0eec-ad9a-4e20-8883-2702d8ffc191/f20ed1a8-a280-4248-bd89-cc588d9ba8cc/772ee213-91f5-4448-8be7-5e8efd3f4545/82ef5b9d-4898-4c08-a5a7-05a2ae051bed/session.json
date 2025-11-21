@@ -1,0 +1,30 @@
+{
+  "id": "82ef5b9d-4898-4c08-a5a7-05a2ae051bed",
+  "title": "Mohamed Salah",
+  "parentId": "772ee213-91f5-4448-8be7-5e8efd3f4545",
+  "messages": [
+    {
+      "id": "e4312246-8966-445a-8f41-daa7f3a0e200",
+      "role": "assistant",
+      "content": "Mohamed Salah: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    },
+    {
+      "id": "3eaa04a0-32b7-47a1-a58f-089f0ee2e217",
+      "role": "user",
+      "content": "give me mo salahs stats in the 17-18 epl season",
+      "highlights": []
+    },
+    {
+      "id": "2c41ab9f-f6c6-43bc-8ab5-5f1d5034619e",
+      "role": "assistant",
+      "content": "Mohamed Salah's stats in the 2017-18 Premier League season were truly remarkable. Here's a breakdown:\n\n*   **Appearances:** 36\n*   **Goals:** 32 (This made him the Premier League top scorer for that season and set a new record for most goals in a 38-game Premier League season)\n*   **Assists:** 11\n*   **Shots:** 137\n*   **Shots on Target:** 72\n*   **Key Passes:** 86\n*   **Dribbles:** 140\n*   **Fouled:** 59\n\nHe had an absolutely sensational debut season with Liverpool, quickly becoming a fan favorite and one of the most feared attackers in the league.",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true,
+  "summary": "Mohamed Salah показал выдающиеся результаты в сезоне АПЛ 2017-18, забив 32 гола в 36 матчах и став лучшим бомбардиром лиги. Он также отметился 11 голевыми передачами, демонстрируя свою эффективность как нападающий. Этот сезон стал для него сенсационным дебютом в \"Ливерпуле\", где он быстро завоевал любовь болельщиков и стал одним из самых опасных игроков.",
+  "originTerm": "Mohamed Salah",
+  "lastSummarizedMessageCount": 3
+}

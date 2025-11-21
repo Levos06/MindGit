@@ -187,7 +187,7 @@ app.post('/api/sessions/:id/summarize', async (req, res) => {
           }
         ],
         temperature: 0.5,
-        max_tokens: 200
+        max_tokens: 256
       })
     });
 
@@ -305,7 +305,7 @@ app.post('/api/chat', async (req, res) => {
         model: 'google/gemini-2.5-flash-lite',
         messages: apiMessages,
         temperature: 0.8,
-        max_tokens: 1024
+        max_tokens: 4096
       })
     });
 
