@@ -1,0 +1,17 @@
+{
+  "id": "9195f220-2ada-4618-b28d-8249fb8dab54",
+  "title": "Шрёдингера",
+  "parentId": "bf41b1a3-8385-45c1-a030-74f7c6d86cfd",
+  "messages": [
+    {
+      "id": "030a7e7e-9568-4991-b131-dbefe09c14a8",
+      "role": "assistant",
+      "content": "Шрёдингера: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true,
+  "summary": "",
+  "originTerm": "Шрёдингера"
+}

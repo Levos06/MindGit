@@ -1,0 +1,18 @@
+{
+  "id": "93756247-b198-4f41-95d1-61b3e886e766",
+  "title": "Ньютона",
+  "parentId": "bf41b1a3-8385-45c1-a030-74f7c6d86cfd",
+  "messages": [
+    {
+      "id": "047c71b6-ae91-43f7-a262-59c4906345a7",
+      "role": "assistant",
+      "content": "Ньютона: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true,
+  "summary": "The user is asking for clarification on a term from Newton. The assistant wants to know if the user doesn't understand the entire term or if they have a specific question about a particular part of it.",
+  "originTerm": "Ньютона",
+  "lastSummarizedMessageCount": 1
+}

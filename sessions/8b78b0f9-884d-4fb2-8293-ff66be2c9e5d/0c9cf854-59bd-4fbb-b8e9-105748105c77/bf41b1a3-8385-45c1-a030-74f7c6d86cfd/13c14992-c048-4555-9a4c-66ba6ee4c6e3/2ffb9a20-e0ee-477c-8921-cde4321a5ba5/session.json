@@ -1,0 +1,17 @@
+{
+  "id": "2ffb9a20-e0ee-477c-8921-cde4321a5ba5",
+  "title": "измерения",
+  "parentId": "13c14992-c048-4555-9a4c-66ba6ee4c6e3",
+  "messages": [
+    {
+      "id": "0f292d2d-2100-4ca3-a379-f4a8abf0e86d",
+      "role": "assistant",
+      "content": "измерения: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true,
+  "summary": "",
+  "originTerm": "измерения"
+}

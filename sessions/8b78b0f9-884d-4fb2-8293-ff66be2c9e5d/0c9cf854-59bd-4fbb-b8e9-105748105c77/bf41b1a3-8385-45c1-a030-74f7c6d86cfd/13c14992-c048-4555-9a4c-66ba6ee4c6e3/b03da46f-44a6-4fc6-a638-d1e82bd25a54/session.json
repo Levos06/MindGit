@@ -1,0 +1,17 @@
+{
+  "id": "b03da46f-44a6-4fc6-a638-d1e82bd25a54",
+  "title": "Квантовая механика",
+  "parentId": "13c14992-c048-4555-9a4c-66ba6ee4c6e3",
+  "messages": [
+    {
+      "id": "6f59250f-0ca1-4cd5-95a2-492bda34f4af",
+      "role": "assistant",
+      "content": "Квантовая механика: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true,
+  "summary": "",
+  "originTerm": "Квантовая механика"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "3a5c71ee-bd1a-4acb-9018-fb15882c178c",
+  "title": "Максвелла",
+  "parentId": "bf41b1a3-8385-45c1-a030-74f7c6d86cfd",
+  "messages": [
+    {
+      "id": "653e0062-89c7-4545-bdd2-323ad9042f47",
+      "role": "assistant",
+      "content": "Максвелла: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true,
+  "summary": "",
+  "originTerm": "Максвелла"
+}

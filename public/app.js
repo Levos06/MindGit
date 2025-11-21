@@ -502,34 +502,97 @@ function renderGraph() {
   // Layout configuration
   const nodeRadius = 30;
   const levelHeight = 120;
-  const nodeSpacing = 150;
+  const minDistance = nodeRadius * 3; // 1.5 диаметра
   
   // Calculate positions for all nodes
   const nodePositions = new Map();
-  let maxWidth = 0;
+  const levelNodes = new Map(); // Track nodes by level
   
-  function layoutTree(node, level, index, siblingCount) {
+  // Phase 1: Initial layout relative to parents
+  function layoutTreeRelative(node, level, parentX) {
+    if (!levelNodes.has(level)) {
+      levelNodes.set(level, []);
+    }
+    
     const children = conversations.filter(c => c.parentId === node.id);
     const childCount = children.length;
-    
-    // Calculate x position
-    const levelWidth = siblingCount * nodeSpacing;
-    const startX = (width - levelWidth) / 2;
-    const x = startX + index * nodeSpacing + nodeSpacing / 2;
     const y = 60 + level * levelHeight;
     
-    nodePositions.set(node.id, { x, y, children });
-    maxWidth = Math.max(maxWidth, x);
+    let x;
+    if (parentX !== undefined) {
+      // Position relative to parent
+      if (childCount === 0) {
+        x = parentX; // No children, stay under parent
+      } else if (childCount === 1) {
+        x = parentX; // Single child under parent
+      } else {
+        // Multiple children - will be positioned later
+        x = parentX;
+      }
+    } else {
+      // Root node - center initially
+      x = width / 2;
+    }
     
-    // Layout children
-    children.forEach((child, idx) => {
-      layoutTree(child, level + 1, idx, childCount || 1);
+    const nodeData = { node, x, y, children, level };
+    nodePositions.set(node.id, nodeData);
+    levelNodes.get(level).push(nodeData);
+    
+    // Layout children relative to this node
+    if (childCount === 1) {
+      layoutTreeRelative(children[0], level + 1, x);
+    } else if (childCount > 1) {
+      const childSpacing = 100;
+      const totalWidth = (childCount - 1) * childSpacing;
+      const startX = x - totalWidth / 2;
+      
+      children.forEach((child, idx) => {
+        const childX = startX + idx * childSpacing;
+        layoutTreeRelative(child, level + 1, childX);
+      });
+    }
+  }
+  
+  // Layout all roots
+  if (roots.length === 1) {
+    layoutTreeRelative(roots[0], 0, width / 2);
+  } else {
+    const rootSpacing = 200;
+    const totalWidth = (roots.length - 1) * rootSpacing;
+    const startX = (width - totalWidth) / 2;
+    roots.forEach((root, idx) => {
+      layoutTreeRelative(root, 0, startX + idx * rootSpacing);
     });
   }
   
-  // Layout all root nodes
-  roots.forEach((root, idx) => {
-    layoutTree(root, 0, idx, roots.length);
+  // Phase 2: Check for collisions and redistribute if needed
+  levelNodes.forEach((nodes, level) => {
+    if (nodes.length < 2) return;
+    
+    // Check if any pair is too close
+    let hasCollision = false;
+    for (let i = 0; i < nodes.length - 1; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dist = Math.abs(nodes[i].x - nodes[j].x);
+        if (dist < minDistance) {
+          hasCollision = true;
+          break;
+        }
+      }
+      if (hasCollision) break;
+    }
+    
+    // If collision detected, redistribute all nodes on this level evenly
+    if (hasCollision) {
+      const nodeSpacing = Math.max(minDistance, 150);
+      const totalWidth = (nodes.length - 1) * nodeSpacing;
+      const startX = (width - totalWidth) / 2;
+      
+      nodes.sort((a, b) => a.x - b.x); // Sort by current x position
+      nodes.forEach((nodeData, idx) => {
+        nodeData.x = startX + idx * nodeSpacing;
+      });
+    }
   });
   
   // Draw edges first (so they appear behind nodes)
