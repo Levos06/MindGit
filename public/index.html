@@ -9,8 +9,21 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./tree.css" />
+    <link rel="stylesheet" href="./graph.css" />
   </head>
   <body>
+    <!-- Graph Curtain -->
+    <div class="graph-curtain" id="graph-curtain">
+      <button class="graph-toggle" id="graph-toggle" aria-label="Toggle graph">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="graph-container" id="graph-container">
+        <svg id="graph-svg" width="100%" height="100%"></svg>
+      </div>
+    </div>
+
     <div class="app-shell">
       <aside class="sidebar">
         <div class="sidebar__header">

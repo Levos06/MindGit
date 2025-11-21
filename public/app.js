@@ -6,6 +6,9 @@ const newChatBtn = document.getElementById('new-chat');
 const sendBtn = document.getElementById('send-button');
 const deepDiveBtn = document.getElementById('deep-dive');
 const contextToast = document.getElementById('context-toast');
+const graphCurtain = document.getElementById('graph-curtain');
+const graphToggle = document.getElementById('graph-toggle');
+const graphSvg = document.getElementById('graph-svg');
 
 // State
 let conversations = [];
@@ -474,4 +477,109 @@ async function handleDeepDive() {
   updateHistory();
   activeConversation = newConversations[0];
   renderConversation();
+}
+
+// --- Graph Visualization ---
+
+graphToggle.addEventListener('click', () => {
+  graphCurtain.classList.toggle('is-open');
+  if (graphCurtain.classList.contains('is-open')) {
+    renderGraph();
+  }
+});
+
+function renderGraph() {
+  const width = graphSvg.clientWidth;
+  const height = graphSvg.clientHeight;
+  
+  // Clear existing content
+  graphSvg.innerHTML = '';
+  
+  // Build tree structure
+  const roots = conversations.filter(c => !c.parentId);
+  if (roots.length === 0) return;
+  
+  // Layout configuration
+  const nodeRadius = 30;
+  const levelHeight = 120;
+  const nodeSpacing = 150;
+  
+  // Calculate positions for all nodes
+  const nodePositions = new Map();
+  let maxWidth = 0;
+  
+  function layoutTree(node, level, index, siblingCount) {
+    const children = conversations.filter(c => c.parentId === node.id);
+    const childCount = children.length;
+    
+    // Calculate x position
+    const levelWidth = siblingCount * nodeSpacing;
+    const startX = (width - levelWidth) / 2;
+    const x = startX + index * nodeSpacing + nodeSpacing / 2;
+    const y = 60 + level * levelHeight;
+    
+    nodePositions.set(node.id, { x, y, children });
+    maxWidth = Math.max(maxWidth, x);
+    
+    // Layout children
+    children.forEach((child, idx) => {
+      layoutTree(child, level + 1, idx, childCount || 1);
+    });
+  }
+  
+  // Layout all root nodes
+  roots.forEach((root, idx) => {
+    layoutTree(root, 0, idx, roots.length);
+  });
+  
+  // Draw edges first (so they appear behind nodes)
+  conversations.forEach(node => {
+    if (node.parentId) {
+      const parentPos = nodePositions.get(node.parentId);
+      const childPos = nodePositions.get(node.id);
+      
+      if (parentPos && childPos) {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const d = `M ${parentPos.x} ${parentPos.y + nodeRadius} 
+                   C ${parentPos.x} ${(parentPos.y + childPos.y) / 2}, 
+                     ${childPos.x} ${(parentPos.y + childPos.y) / 2}, 
+                     ${childPos.x} ${childPos.y - nodeRadius}`;
+        path.setAttribute('d', d);
+        path.setAttribute('class', 'graph-edge');
+        graphSvg.appendChild(path);
+      }
+    }
+  });
+  
+  // Draw nodes
+  conversations.forEach(node => {
+    const pos = nodePositions.get(node.id);
+    if (!pos) return;
+    
+    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    group.setAttribute('class', `graph-node${node.id === activeConversation.id ? ' is-active' : ''}`);
+    group.style.cursor = 'pointer';
+    
+    // Circle
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', pos.x);
+    circle.setAttribute('cy', pos.y);
+    circle.setAttribute('r', nodeRadius);
+    group.appendChild(circle);
+    
+    // Label
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', pos.x);
+    text.setAttribute('y', pos.y + nodeRadius + 20);
+    text.textContent = node.title.slice(0, 20) + (node.title.length > 20 ? '...' : '');
+    group.appendChild(text);
+    
+    // Click handler
+    group.addEventListener('click', () => {
+      switchConversation(node);
+      graphCurtain.classList.remove('is-open');
+    });
+    
+    graphSvg.appendChild(group);
+  });
 }

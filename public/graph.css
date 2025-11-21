@@ -1,0 +1,131 @@
+/* Graph Curtain Styles */
+
+.graph-curtain {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 66vh;
+  background: linear-gradient(180deg, rgba(3, 7, 18, 0.98) 0%, rgba(6, 12, 24, 0.95) 100%);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  z-index: 1000;
+  transform: translateY(-100%);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.graph-curtain.is-open {
+  transform: translateY(0);
+}
+
+.graph-toggle {
+  position: absolute;
+  bottom: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 40px;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--muted);
+  transition: all 0.3s ease;
+  z-index: 1001;
+}
+
+.graph-toggle:hover {
+  background: rgba(15, 23, 42, 1);
+  color: var(--text);
+}
+
+.graph-toggle svg {
+  transition: transform 0.3s ease;
+}
+
+.graph-curtain.is-open .graph-toggle svg {
+  transform: rotate(180deg);
+}
+
+.graph-container {
+  width: 100%;
+  height: 100%;
+  padding: 40px;
+  overflow: hidden;
+}
+
+#graph-svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Graph Node Styles */
+.graph-node {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.graph-node circle {
+  fill: rgba(75, 141, 255, 0.2);
+  stroke: rgba(75, 141, 255, 0.6);
+  stroke-width: 2px;
+  transition: all 0.3s ease;
+}
+
+.graph-node:hover circle {
+  fill: rgba(75, 141, 255, 0.4);
+  stroke: rgba(75, 141, 255, 1);
+  stroke-width: 3px;
+}
+
+.graph-node text {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  pointer-events: none;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.graph-node.is-active circle {
+  fill: rgba(34, 211, 238, 0.3);
+  stroke: rgba(34, 211, 238, 1);
+  stroke-width: 3px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.graph-node.is-active text {
+  fill: var(--accent);
+  font-weight: 600;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    r: 30px;
+  }
+  50% {
+    opacity: 0.7;
+    r: 33px;
+  }
+}
+
+/* Graph Edge Styles */
+.graph-edge {
+  stroke: rgba(255, 255, 255, 0.15);
+  stroke-width: 2px;
+  fill: none;
+  transition: stroke 0.3s ease;
+}
+
+.graph-edge.is-highlighted {
+  stroke: rgba(75, 141, 255, 0.5);
+  stroke-width: 3px;
+}
+

@@ -1,0 +1,18 @@
+{
+  "id": "b01b0eec-ad9a-4e20-8883-2702d8ffc191",
+  "title": "многообразие",
+  "parentId": "eab30100-15d0-46b4-af10-ca08ec80bc2a",
+  "messages": [
+    {
+      "id": "1d6af36e-98de-4150-a1a9-403b0149cccd",
+      "role": "assistant",
+      "content": "многообразие: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true,
+  "summary": "Here's a summary of the conversation in Russian, as the content is Russian:\n\nСобеседник уточнил, что ему непонятен термин \"многообразие\" в целом. Ассистент предложил помощь, спросив, есть ли конкретный вопрос по этому фрагменту.",
+  "originTerm": "многообразие",
+  "lastSummarizedMessageCount": 1
+}
