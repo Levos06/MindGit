@@ -114,14 +114,13 @@ textarea {
   backdrop-filter: none;
   display: flex;
   flex-direction: column;
-  padding: 36px clamp(24px, 6vw, 72px);
+  padding: 36px 0;
   gap: 24px;
   height: 100vh;
   overflow: hidden;
   grid-column: 2;
-  padding-right: 64px; /* Increased right padding for scrollbar space */
-  width: 80%;
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   border-right: none;
 }
 
@@ -153,6 +152,9 @@ textarea {
   font-weight: 500;
   color: var(--muted);
   justify-content: space-between;
+  width: 85%;
+  margin: 0 auto;
+  flex-shrink: 0;
 }
 
 .chat-panel__header > span {
@@ -176,6 +178,8 @@ textarea {
   overflow-y: auto;
   padding-bottom: 32px;
   background: transparent;
+  padding-left: 15%;
+  padding-right: 15%;
 }
 
 
@@ -370,6 +374,9 @@ textarea {
   border-radius: 24px;
   padding: 14px 18px;
   background: var(--panel-alt);
+  width: 70%;
+  margin: 0 auto;
+  flex-shrink: 0;
 }
 
 .chat-input textarea {

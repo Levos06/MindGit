@@ -35,11 +35,11 @@ if (markdownParser?.setOptions) {
     mangle: false
   });
 }
-const htmlSanitizer = window.DOMPurify || null;
-const MARKDOWN_SANITIZE_CONFIG = {
-  ADD_ATTR: ['data-highlight-id', 'title'],
-  ADD_TAGS: ['mark', 'button']
-};
+  const htmlSanitizer = window.DOMPurify || null;
+  const MARKDOWN_SANITIZE_CONFIG = {
+    ADD_ATTR: ['data-highlight-id', 'title', 'class', 'style'],
+    ADD_TAGS: ['mark', 'button']
+  };
 
 // --- Initialization ---
 (async () => {
@@ -635,12 +635,15 @@ function escapeHtml(str) {
 }
 
 function toggleDeepDiveButton() {
+  // Removed logic as deepDiveBtn is now part of layout and handled by HTML/CSS visibility
   const count = activeConversation.pendingFragments?.length || 0;
-  if (count > 0 && deepDiveBtn) {
-    deepDiveBtn.hidden = false;
-    deepDiveBtn.textContent = `Углубиться в термины (${count})`;
-  } else if (deepDiveBtn) {
-    deepDiveBtn.hidden = true;
+  if (deepDiveBtn) {
+    if (count > 0) {
+      deepDiveBtn.hidden = false;
+      deepDiveBtn.textContent = `Углубиться в термины (${count})`;
+    } else {
+      deepDiveBtn.hidden = true;
+    }
   }
 }
 
