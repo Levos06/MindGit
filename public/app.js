@@ -43,7 +43,9 @@ function createEmptyConversation() {
     pendingFragments: [],
     parentId: null,
     isExpanded: true,
-    summary: ''
+    summary: '',
+    originTerm: null,
+    lastSummarizedMessageCount: 0
   };
 }
 
@@ -75,6 +77,12 @@ async function saveSession(session) {
 async function triggerSummarization(sessionId) {
   const session = conversations.find(c => c.id === sessionId);
   if (!session || session.messages.length === 0) return;
+  
+  // Check if summary is already up to date
+  if (session.messages.length <= (session.lastSummarizedMessageCount || 0)) {
+    console.log('Summary already up to date, skipping...');
+    return;
+  }
 
   try {
     showContextToast(true);
@@ -84,7 +92,12 @@ async function triggerSummarization(sessionId) {
     
     if (res.ok) {
       const data = await res.json();
-      session.summary = data.summary;
+      if (!data.skipped) {
+        session.summary = data.summary;
+        session.lastSummarizedMessageCount = session.messages.length;
+        // Save updated session
+        await saveSession(session);
+      }
     }
   } catch (err) {
     console.error('Failed to summarize session', err);
@@ -107,11 +120,12 @@ function showContextToast(show) {
 }
 
 async function switchConversation(newConversation) {
-  // Only trigger summarization if we're actually switching between different conversations
+  // Only trigger summarization if we're actually switching AND there are new messages
   if (activeConversation && 
       activeConversation.id !== newConversation.id && 
-      activeConversation.messages.length > 0) {
-    // Trigger summary for the OLD conversation
+      activeConversation.messages.length > 0 &&
+      activeConversation.messages.length > (activeConversation.lastSummarizedMessageCount || 0)) {
+    // Trigger summary for the OLD conversation (only if new messages exist)
     // Don't await it, let it run in background
     triggerSummarization(activeConversation.id);
   }
@@ -162,7 +176,10 @@ form.addEventListener('submit', async (event) => {
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: payload })
+      body: JSON.stringify({ 
+        messages: payload,
+        sessionId: activeConversation.id
+      })
     });
 
     if (!response.ok) {
@@ -426,7 +443,9 @@ async function handleDeepDive() {
     title: fragment.text.slice(0, 32) || 'Термин',
     pendingFragments: [],
     parentId: activeConversation.id,
+    originTerm: fragment.text,
     isExpanded: true,
+    summary: '',
     messages: [
       {
         id: crypto.randomUUID(),
@@ -445,9 +464,10 @@ async function handleDeepDive() {
   
   conversations = [...conversations, ...newConversations];
 
-  // Trigger summary for parent before switching to child (as per logic "updating context" on leave)
-  // Only if parent has messages
-  if (activeConversation.messages.length > 0) {
+  // Trigger summary for parent before switching to child
+  // Only if parent has NEW messages since last summarization
+  if (activeConversation.messages.length > 0 &&
+      activeConversation.messages.length > (activeConversation.lastSummarizedMessageCount || 0)) {
     triggerSummarization(activeConversation.id);
   }
 

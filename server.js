@@ -88,7 +88,7 @@ app.get('/api/sessions', async (req, res) => {
 
 app.post('/api/sessions', async (req, res) => {
   try {
-    const { id, title, parentId, messages, pendingFragments, isExpanded, summary } = req.body;
+    const { id, title, parentId, messages, pendingFragments, isExpanded, summary, originTerm, lastSummarizedMessageCount } = req.body;
     const sessionId = id;
     
     let targetDir = SESSIONS_DIR;
@@ -107,7 +107,10 @@ app.post('/api/sessions', async (req, res) => {
       await fs.mkdir(sessionDir, { recursive: true });
     }
     
-    const sessionData = { id, title, parentId, messages, pendingFragments, isExpanded, summary };
+    const sessionData = { 
+      id, title, parentId, messages, pendingFragments, 
+      isExpanded, summary, originTerm, lastSummarizedMessageCount 
+    };
     await fs.writeFile(
       path.join(sessionDir, 'session.json'), 
       JSON.stringify(sessionData, null, 2)
@@ -148,7 +151,18 @@ app.post('/api/sessions/:id/summarize', async (req, res) => {
     const session = JSON.parse(content);
 
     if (!session.messages || session.messages.length === 0) {
-      return res.json({ summary: '' });
+      return res.json({ summary: '', messageCount: 0, skipped: true });
+    }
+
+    // Check if summary is already up to date
+    const lastCount = session.lastSummarizedMessageCount || 0;
+    if (session.messages.length <= lastCount) {
+      console.log(`Summary already up to date for session ${sessionId} (${session.messages.length} <= ${lastCount})`);
+      return res.json({ 
+        summary: session.summary || '', 
+        messageCount: session.messages.length,
+        skipped: true 
+      });
     }
 
     // Prepare messages for summarization
@@ -184,11 +198,17 @@ app.post('/api/sessions/:id/summarize', async (req, res) => {
     const data = await response.json();
     const summary = data.choices?.[0]?.message?.content || '';
 
-    // Update session
+    // Update session with summary and message count
     session.summary = summary;
+    session.lastSummarizedMessageCount = session.messages.length;
     await fs.writeFile(jsonPath, JSON.stringify(session, null, 2));
 
-    res.json({ success: true, summary });
+    res.json({ 
+      success: true, 
+      summary,
+      messageCount: session.messages.length,
+      skipped: false
+    });
 
   } catch (error) {
     console.error('Error summarizing session:', error);
@@ -196,15 +216,82 @@ app.post('/api/sessions/:id/summarize', async (req, res) => {
   }
 });
 
+// --- Helper: Build context chain from parent sessions ---
+
+async function buildContextChain(sessionId) {
+  const chain = [];
+  let currentId = sessionId;
+  
+  while (currentId) {
+    const sessionPath = await findSessionPath(currentId);
+    if (!sessionPath) break;
+    
+    const jsonPath = path.join(sessionPath, 'session.json');
+    try {
+      const content = await fs.readFile(jsonPath, 'utf-8');
+      const session = JSON.parse(content);
+      
+      chain.unshift({
+        title: session.title || 'Без названия',
+        summary: session.summary || '',
+        originTerm: session.originTerm || null
+      });
+      
+      currentId = session.parentId;
+    } catch (err) {
+      console.error(`Failed to read session ${currentId}:`, err);
+      break;
+    }
+  }
+  
+  return chain;
+}
+
 // --- Chat Proxy ---
 
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages } = req.body;
+    const { messages, sessionId } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'Messages array is required.' });
     }
+
+    // Build context chain if sessionId provided
+    let contextMessage = null;
+    if (sessionId) {
+      const contextChain = await buildContextChain(sessionId);
+      
+      // Only add context if there are parent sessions (chain length > 1)
+      if (contextChain.length > 1) {
+        let contextText = "Контекст беседы (путь углубления в тему):\n\n";
+        
+        contextChain.forEach((item, index) => {
+          // Show term that led to this topic (from previous item)
+          if (index > 0 && item.originTerm) {
+            contextText += `→ Пользователь углубился в термин: "${item.originTerm}"\n\n`;
+          }
+          
+          contextText += `${index + 1}. Тема: "${item.title}"\n`;
+          if (item.summary) {
+            contextText += `   Краткое содержание: ${item.summary}\n\n`;
+          } else if (index < contextChain.length - 1) {
+            // If not the last (current) item and no summary yet
+            contextText += `   (ещё не завершено)\n\n`;
+          }
+        });
+        
+        contextMessage = {
+          role: "system",
+          content: contextText
+        };
+      }
+    }
+
+    // Combine context with user messages
+    const apiMessages = contextMessage 
+      ? [contextMessage, ...messages]
+      : messages;
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -216,7 +303,7 @@ app.post('/api/chat', async (req, res) => {
       },
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash-lite',
-        messages,
+        messages: apiMessages,
         temperature: 0.8,
         max_tokens: 1024
       })
