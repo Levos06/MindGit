@@ -489,8 +489,9 @@ graphToggle.addEventListener('click', () => {
 });
 
 function renderGraph() {
-  const width = graphSvg.clientWidth;
-  const height = graphSvg.clientHeight;
+  const container = document.querySelector('.graph-container');
+  const containerWidth = container.clientWidth;
+  const containerHeight = container.clientHeight;
   
   // Clear existing content
   graphSvg.innerHTML = '';
@@ -518,31 +519,22 @@ function renderGraph() {
     const childCount = children.length;
     const y = 60 + level * levelHeight;
     
-    let x;
-    if (parentX !== undefined) {
-      // Position relative to parent
-      if (childCount === 0) {
-        x = parentX; // No children, stay under parent
-      } else if (childCount === 1) {
-        x = parentX; // Single child under parent
-      } else {
-        // Multiple children - will be positioned later
-        x = parentX;
-      }
-    } else {
-      // Root node - center initially
-      x = width / 2;
-    }
+    // Position this node under parent (or at center for root)
+    const x = parentX !== undefined ? parentX : containerWidth / 2;
     
     const nodeData = { node, x, y, children, level };
     nodePositions.set(node.id, nodeData);
     levelNodes.get(level).push(nodeData);
     
     // Layout children relative to this node
-    if (childCount === 1) {
+    if (childCount === 0) {
+      // No children, nothing to do
+    } else if (childCount === 1) {
+      // Single child directly under parent
       layoutTreeRelative(children[0], level + 1, x);
-    } else if (childCount > 1) {
-      const childSpacing = 100;
+    } else {
+      // Multiple children - distribute evenly around parent center
+      const childSpacing = 120;
       const totalWidth = (childCount - 1) * childSpacing;
       const startX = x - totalWidth / 2;
       
@@ -555,16 +547,30 @@ function renderGraph() {
   
   // Layout all roots
   if (roots.length === 1) {
-    layoutTreeRelative(roots[0], 0, width / 2);
+    layoutTreeRelative(roots[0], 0, containerWidth / 2);
   } else {
     const rootSpacing = 200;
     const totalWidth = (roots.length - 1) * rootSpacing;
-    const startX = (width - totalWidth) / 2;
+    const startX = (containerWidth - totalWidth) / 2;
     roots.forEach((root, idx) => {
       layoutTreeRelative(root, 0, startX + idx * rootSpacing);
     });
   }
   
+  // Helper to shift entire subtree recursively
+  function shiftSubtree(nodeId, deltaX) {
+    const data = nodePositions.get(nodeId);
+    if (!data) return;
+    
+    data.children.forEach(child => {
+      const childData = nodePositions.get(child.id);
+      if (childData) {
+        childData.x += deltaX;
+        shiftSubtree(child.id, deltaX);
+      }
+    });
+  }
+
   // Phase 2: Check for collisions and redistribute if needed
   levelNodes.forEach((nodes, level) => {
     if (nodes.length < 2) return;
@@ -584,16 +590,40 @@ function renderGraph() {
     
     // If collision detected, redistribute all nodes on this level evenly
     if (hasCollision) {
+      // Calculate center of current positions
+      const currentCenterX = nodes.reduce((sum, n) => sum + n.x, 0) / nodes.length;
+      
       const nodeSpacing = Math.max(minDistance, 150);
       const totalWidth = (nodes.length - 1) * nodeSpacing;
-      const startX = (width - totalWidth) / 2;
+      const startX = currentCenterX - totalWidth / 2;
       
       nodes.sort((a, b) => a.x - b.x); // Sort by current x position
       nodes.forEach((nodeData, idx) => {
-        nodeData.x = startX + idx * nodeSpacing;
+        const newX = startX + idx * nodeSpacing;
+        const deltaX = newX - nodeData.x;
+        
+        nodeData.x = newX;
+        
+        // If node moved, shift its entire subtree
+        if (Math.abs(deltaX) > 0.1) {
+          shiftSubtree(nodeData.node.id, deltaX);
+        }
       });
     }
   });
+  
+  // Calculate actual dimensions needed for SVG
+  let maxX = 0, maxY = 0;
+  nodePositions.forEach(pos => {
+    maxX = Math.max(maxX, pos.x);
+    maxY = Math.max(maxY, pos.y);
+  });
+  
+  // Add padding and set SVG size
+  const svgWidth = Math.max(containerWidth, maxX + 100);
+  const svgHeight = Math.max(containerHeight, maxY + 100);
+  graphSvg.setAttribute('width', svgWidth);
+  graphSvg.setAttribute('height', svgHeight);
   
   // Draw edges first (so they appear behind nodes)
   conversations.forEach(node => {
