@@ -1,0 +1,17 @@
+{
+  "id": "4b13685d-21ad-4820-80c1-bbd3d46500d0",
+  "title": "химический элемент",
+  "parentId": "b03da46f-44a6-4fc6-a638-d1e82bd25a54",
+  "messages": [
+    {
+      "id": "14c5d521-840c-43e9-bff2-4ab1620e0f42",
+      "role": "assistant",
+      "content": "химический элемент: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": []
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true,
+  "summary": "",
+  "originTerm": "химический элемент"
+}

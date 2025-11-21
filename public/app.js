@@ -501,9 +501,10 @@ function renderGraph() {
   if (roots.length === 0) return;
   
   // Layout configuration
-  const nodeRadius = 30;
-  const levelHeight = 120;
-  const minDistance = nodeRadius * 3; // 1.5 диаметра
+  const nodeWidth = 140;
+  const nodeHeight = 60;
+  const levelHeight = 100;
+  const minDistance = nodeWidth + 20; // distance between centers
   
   // Calculate positions for all nodes
   const nodePositions = new Map();
@@ -534,7 +535,7 @@ function renderGraph() {
       layoutTreeRelative(children[0], level + 1, x);
     } else {
       // Multiple children - distribute evenly around parent center
-      const childSpacing = 120;
+      const childSpacing = nodeWidth + 20;
       const totalWidth = (childCount - 1) * childSpacing;
       const startX = x - totalWidth / 2;
       
@@ -549,7 +550,7 @@ function renderGraph() {
   if (roots.length === 1) {
     layoutTreeRelative(roots[0], 0, containerWidth / 2);
   } else {
-    const rootSpacing = 200;
+    const rootSpacing = nodeWidth + 40;
     const totalWidth = (roots.length - 1) * rootSpacing;
     const startX = (containerWidth - totalWidth) / 2;
     roots.forEach((root, idx) => {
@@ -593,7 +594,7 @@ function renderGraph() {
       // Calculate center of current positions
       const currentCenterX = nodes.reduce((sum, n) => sum + n.x, 0) / nodes.length;
       
-      const nodeSpacing = Math.max(minDistance, 150);
+      const nodeSpacing = Math.max(minDistance, nodeWidth + 20);
       const totalWidth = (nodes.length - 1) * nodeSpacing;
       const startX = currentCenterX - totalWidth / 2;
       
@@ -613,15 +614,28 @@ function renderGraph() {
   });
   
   // Calculate actual dimensions needed for SVG
-  let maxX = 0, maxY = 0;
+  let minX = Infinity, maxX = -Infinity, maxY = 0;
   nodePositions.forEach(pos => {
-    maxX = Math.max(maxX, pos.x);
-    maxY = Math.max(maxY, pos.y);
+    minX = Math.min(minX, pos.x - nodeWidth/2);
+    maxX = Math.max(maxX, pos.x + nodeWidth/2);
+    maxY = Math.max(maxY, pos.y + nodeHeight/2);
   });
   
-  // Add padding and set SVG size
-  const svgWidth = Math.max(containerWidth, maxX + 100);
-  const svgHeight = Math.max(containerHeight, maxY + 100);
+  // Shift all nodes if tree goes off-screen to the left
+  const padding = 40;
+  if (minX < padding) {
+    const shiftX = padding - minX;
+    nodePositions.forEach(pos => {
+      pos.x += shiftX;
+    });
+    maxX += shiftX;
+  }
+  
+  // Set SVG size
+  // Ensure SVG is at least the size of container
+  const svgWidth = Math.max(containerWidth, maxX + padding);
+  const svgHeight = Math.max(containerHeight, maxY + padding);
+  
   graphSvg.setAttribute('width', svgWidth);
   graphSvg.setAttribute('height', svgHeight);
   
@@ -633,10 +647,11 @@ function renderGraph() {
       
       if (parentPos && childPos) {
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        const d = `M ${parentPos.x} ${parentPos.y + nodeRadius} 
+        // Connect from bottom-center of parent to top-center of child
+        const d = `M ${parentPos.x} ${parentPos.y + nodeHeight/2} 
                    C ${parentPos.x} ${(parentPos.y + childPos.y) / 2}, 
                      ${childPos.x} ${(parentPos.y + childPos.y) / 2}, 
-                     ${childPos.x} ${childPos.y - nodeRadius}`;
+                     ${childPos.x} ${childPos.y - nodeHeight/2}`;
         path.setAttribute('d', d);
         path.setAttribute('class', 'graph-edge');
         graphSvg.appendChild(path);
@@ -650,24 +665,36 @@ function renderGraph() {
     if (!pos) return;
     
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    group.setAttribute('class', `graph-node${node.id === activeConversation.id ? ' is-active' : ''}`);
-    group.style.cursor = 'pointer';
+    group.setAttribute('class', `graph-node-group${node.id === activeConversation.id ? ' active' : ''}`);
     
-    // Circle
-    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    circle.setAttribute('cx', pos.x);
-    circle.setAttribute('cy', pos.y);
-    circle.setAttribute('r', nodeRadius);
-    group.appendChild(circle);
+    // Rect
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', pos.x - nodeWidth/2);
+    rect.setAttribute('y', pos.y - nodeHeight/2);
+    rect.setAttribute('width', nodeWidth);
+    rect.setAttribute('height', nodeHeight);
+    rect.setAttribute('rx', 8);
+    rect.setAttribute('class', 'graph-node-rect');
+    group.appendChild(rect);
     
-    // Label
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', pos.x);
-    text.setAttribute('y', pos.y + nodeRadius + 20);
-    text.textContent = node.title.slice(0, 20) + (node.title.length > 20 ? '...' : '');
-    group.appendChild(text);
+    // Foreign Object for HTML content
+    const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+    fo.setAttribute('x', pos.x - nodeWidth/2);
+    fo.setAttribute('y', pos.y - nodeHeight/2);
+    fo.setAttribute('width', nodeWidth);
+    fo.setAttribute('height', nodeHeight);
     
-    // Click handler
+    const div = document.createElement('div');
+    div.className = 'node-label-container';
+    
+    const textSpan = document.createElement('span');
+    textSpan.className = 'node-label-text';
+    textSpan.textContent = node.title || 'Новый чат';
+    
+    div.appendChild(textSpan);
+    fo.appendChild(div);
+    group.appendChild(fo);
+    
     group.addEventListener('click', () => {
       switchConversation(node);
       graphCurtain.classList.remove('is-open');

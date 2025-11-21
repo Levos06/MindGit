@@ -1,56 +1,21 @@
-/* Graph Curtain Styles */
-
 .graph-curtain {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
+  width: 100%;
   height: 66vh;
-  background: linear-gradient(180deg, rgba(3, 7, 18, 0.98) 0%, rgba(6, 12, 24, 0.95) 100%);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--border);
-  z-index: 1000;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 900;
   transform: translateY(-100%);
-  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
 }
 
 .graph-curtain.is-open {
   transform: translateY(0);
-}
-
-.graph-toggle {
-  position: absolute;
-  bottom: -40px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 48px;
-  height: 40px;
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border);
-  border-top: none;
-  border-radius: 0 0 12px 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--muted);
-  transition: all 0.3s ease;
-  z-index: 1001;
-}
-
-.graph-toggle:hover {
-  background: rgba(15, 23, 42, 1);
-  color: var(--text);
-}
-
-.graph-toggle svg {
-  transition: transform 0.3s ease;
-}
-
-.graph-curtain.is-open .graph-toggle svg {
-  transform: rotate(180deg);
 }
 
 .graph-container {
@@ -67,67 +32,100 @@
   min-height: 100%;
 }
 
-/* Graph Node Styles */
-.graph-node {
+.graph-toggle {
+  position: absolute;
+  bottom: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
   cursor: pointer;
-  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s ease;
+  z-index: 901;
 }
 
-.graph-node circle {
-  fill: rgba(75, 141, 255, 0.2);
-  stroke: rgba(75, 141, 255, 0.6);
+.graph-toggle svg {
+  transition: transform 0.3s ease;
+}
+
+.graph-curtain.is-open .graph-toggle svg {
+  transform: rotate(180deg);
+}
+
+/* Node Styles */
+.graph-node-group {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.graph-node-group:hover {
+  opacity: 0.8;
+}
+
+.graph-node-rect {
+  fill: rgba(30, 41, 59, 0.9);
+  stroke: #475569;
   stroke-width: 2px;
   transition: all 0.3s ease;
 }
 
-.graph-node:hover circle {
-  fill: rgba(75, 141, 255, 0.4);
-  stroke: rgba(75, 141, 255, 1);
+.graph-node-group.active .graph-node-rect {
+  stroke: #3b82f6;
   stroke-width: 3px;
+  filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5));
+  animation: pulseRect 2s infinite;
 }
 
-.graph-node text {
-  fill: var(--text);
+/* HTML Text Container inside SVG */
+.node-label-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #e2e8f0;
   font-size: 12px;
-  font-weight: 500;
-  pointer-events: none;
-  text-anchor: middle;
-  dominant-baseline: middle;
+  line-height: 1.2;
+  padding: 4px;
+  box-sizing: border-box;
+  font-family: system-ui, -apple-system, sans-serif;
 }
 
-.graph-node.is-active circle {
-  fill: rgba(34, 211, 238, 0.3);
-  stroke: rgba(34, 211, 238, 1);
-  stroke-width: 3px;
-  animation: pulse 2s ease-in-out infinite;
+.node-label-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3; /* Limit to 3 lines */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
 }
 
-.graph-node.is-active text {
-  fill: var(--accent);
-  font-weight: 600;
+.graph-edge {
+  fill: none;
+  stroke: #475569;
+  stroke-width: 2px;
+  opacity: 0.5;
 }
 
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-    r: 30px;
+@keyframes pulseRect {
+  0% {
+    stroke-opacity: 1;
+    stroke-width: 3px;
   }
   50% {
-    opacity: 0.7;
-    r: 33px;
+    stroke-opacity: 0.5;
+    stroke-width: 2px;
+  }
+  100% {
+    stroke-opacity: 1;
+    stroke-width: 3px;
   }
 }
-
-/* Graph Edge Styles */
-.graph-edge {
-  stroke: rgba(255, 255, 255, 0.15);
-  stroke-width: 2px;
-  fill: none;
-  transition: stroke 0.3s ease;
-}
-
-.graph-edge.is-highlighted {
-  stroke: rgba(75, 141, 255, 0.5);
-  stroke-width: 3px;
-}
-
