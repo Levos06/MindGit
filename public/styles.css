@@ -297,11 +297,16 @@ textarea {
 .message {
   width: 100%;
   display: flex;
+  flex-direction: column; /* Allow stacking body and actions */
   justify-content: flex-start;
 }
 
 .message--user {
-  justify-content: flex-end;
+  align-items: flex-end; /* User messages to right */
+}
+
+.message--bot {
+  align-items: flex-start; /* Bot messages to left */
 }
 
 .message__body {
@@ -318,10 +323,52 @@ textarea {
 .message--bot .message__body {
   width: 100%;
   max-width: 100%;
-  padding: 0 0 32px;
+  padding: 0 0 8px; /* Reduced padding to bring actions closer */
   border: none;
   background: transparent;
   box-shadow: none;
+}
+
+.message__actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px; /* Spacing between messages */
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.message:hover .message__actions {
+  opacity: 1;
+}
+
+.action-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.highlight-toggle-btn.is-active {
+  color: var(--accent);
+  border-color: rgba(75, 141, 255, 0.3);
+  background: rgba(75, 141, 255, 0.1);
+}
+
+.highlight-toggle-btn.is-disabled {
+  color: var(--muted);
+  opacity: 0.6;
 }
 
 .message--user .message__body {

@@ -271,19 +271,60 @@ function renderConversation() {
       const bubble = document.createElement('div');
       bubble.className = `message message--${message.role === 'user' ? 'user' : 'bot'}`;
       bubble.dataset.messageId = message.id;
-      const html = renderMessageHtml(message);
+      
       const body = document.createElement('div');
       body.className = 'message__body';
+      
+      const html = renderMessageHtml(message);
       if (html !== null) {
         body.innerHTML = html;
         renderMathIfAvailable(body);
-        if (message.role === 'assistant') {
+        // Only apply highlights if highlighting is NOT disabled for this message
+        // We default to enabled (undefined or false means enabled, true means disabled)
+        if (message.role === 'assistant' && !message.disableHighlighting) {
           applyHighlightsToElement(body, message);
         }
       } else {
         body.textContent = message.content;
       }
+      
       bubble.appendChild(body);
+
+      // Add actions footer for assistant messages
+      if (message.role === 'assistant') {
+        const actions = document.createElement('div');
+        actions.className = 'message__actions';
+        
+        // Copy button
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'action-btn copy-btn';
+        copyBtn.title = 'Копировать сообщение';
+        copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+        copyBtn.onclick = () => {
+          navigator.clipboard.writeText(message.content).then(() => {
+            const originalHtml = copyBtn.innerHTML;
+            copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+            setTimeout(() => copyBtn.innerHTML = originalHtml, 2000);
+          });
+        };
+        
+        // Highlight toggle button
+        const highlightToggleBtn = document.createElement('button');
+        highlightToggleBtn.className = `action-btn highlight-toggle-btn ${message.disableHighlighting ? 'is-disabled' : 'is-active'}`;
+        highlightToggleBtn.title = message.disableHighlighting ? 'Включить выделение терминов' : 'Отключить выделение терминов';
+        highlightToggleBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>`;
+        
+        highlightToggleBtn.onclick = () => {
+          message.disableHighlighting = !message.disableHighlighting;
+          saveSession(activeConversation); // Save state
+          renderConversation(); // Re-render to update UI and text selection behavior
+        };
+
+        actions.appendChild(copyBtn);
+        actions.appendChild(highlightToggleBtn);
+        bubble.appendChild(actions);
+      }
+      
       return bubble;
     })
   );
@@ -388,6 +429,11 @@ function handleSelection() {
   const message = activeConversation.messages.find((msg) => msg.id === bubble.dataset.messageId);
   if (!message) {
     selection.removeAllRanges();
+    return;
+  }
+
+  // If highlighting is disabled for this message, allow default selection behavior (copying, etc.)
+  if (message.disableHighlighting) {
     return;
   }
 
@@ -540,11 +586,50 @@ function renderMessageHtml(message) {
   
   if (supportsMarkdown) {
     let markdownSource = baseText;
-    if (needsLegacyHighlighting) {
-      markdownSource = buildHighlightedMarkdown(baseText, message.highlights);
+    
+    // PROTECT MATH: Replace math blocks with placeholders to prevent Markdown parsing interference
+    // This protects $$, $ (if not currency), and \[ \]
+    const mathBlocks = [];
+    const protectMath = (source) => {
+      return source.replace(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|(?<!\$)\$(?!\$)[^$\n]+(?<!\$)\$(?!\$))/g, (match) => {
+        // Skip if it looks like currency (simple heuristic: space after $)
+        if (match.startsWith('$ ') || match.startsWith(' $')) return match;
+        // Use a placeholder that doesn't trigger markdown formatting (no underscores/asterisks)
+        const id = `MATHBLOCK${mathBlocks.length}ENDMATHBLOCK`;
+        mathBlocks.push(match);
+        return id;
+      });
+    };
+
+    if (!needsLegacyHighlighting) {
+        markdownSource = protectMath(markdownSource);
+    } else {
+        // If we have legacy highlights, we need to be careful not to break them.
+        // But legacy highlighting builds HTML directly into markdown, which is messy.
+        // For now, let's assume legacy highlights don't overlap with math complexly.
+        // Better to apply highlight-builder first, then protect math? 
+        // No, highlights inject <mark>, which math protection might hide if inside.
+        // Let's prioritize legacy behavior if present (rare now), or skip math protection for legacy.
+        // Or try to protect math inside buildHighlightedMarkdown? Too complex.
+        // Let's stick to: build highlights -> then protect math? 
+        // If buildHighlightedMarkdown returns markdown with <mark> tags, 
+        // protectMath will see <mark> as text. 
+        // Let's do: build highlighted -> protect math.
+        markdownSource = buildHighlightedMarkdown(baseText, message.highlights);
+        markdownSource = protectMath(markdownSource);
     }
+    
     const rawHtml = parser.parse(markdownSource);
-    return purifier.sanitize(rawHtml, MARKDOWN_SANITIZE_CONFIG);
+    let sanitizedHtml = purifier.sanitize(rawHtml, MARKDOWN_SANITIZE_CONFIG);
+    
+    // RESTORE MATH
+    mathBlocks.forEach((block, index) => {
+      const id = `MATHBLOCK${index}ENDMATHBLOCK`;
+      // Use split/join to replace all instances (though there should be one) safely
+      sanitizedHtml = sanitizedHtml.split(id).join(block);
+    });
+    
+    return sanitizedHtml;
   }
   
   if (needsLegacyHighlighting) {
@@ -955,7 +1040,8 @@ function renderMathIfAvailable(element) {
         { left: '$', right: '$', display: false },
         { left: '\\(', right: '\\)', display: false }
       ],
-      throwOnError: false
+      throwOnError: false,
+      output: 'html' // Render to HTML+CSS, which is generally safer/faster than MathML in some contexts
     });
   }
 }
