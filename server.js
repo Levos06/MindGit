@@ -88,7 +88,7 @@ app.get('/api/sessions', async (req, res) => {
 
 app.post('/api/sessions', async (req, res) => {
   try {
-    const { id, title, parentId, messages, pendingFragments, isExpanded, summary, originTerm, lastSummarizedMessageCount } = req.body;
+    const { id, title, parentId, messages, pendingFragments, isExpanded, summary, originTerm, originHighlightId, lastSummarizedMessageCount } = req.body;
     const sessionId = id;
     
     let targetDir = SESSIONS_DIR;
@@ -109,7 +109,7 @@ app.post('/api/sessions', async (req, res) => {
     
     const sessionData = { 
       id, title, parentId, messages, pendingFragments, 
-      isExpanded, summary, originTerm, lastSummarizedMessageCount 
+      isExpanded, summary, originTerm, originHighlightId, lastSummarizedMessageCount 
     };
     await fs.writeFile(
       path.join(sessionDir, 'session.json'), 
@@ -251,7 +251,7 @@ async function buildContextChain(sessionId) {
 
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages, sessionId } = req.body;
+    const { messages, sessionId, stream = true } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'Messages array is required.' });
@@ -305,7 +305,8 @@ app.post('/api/chat', async (req, res) => {
         model: 'google/gemini-2.5-flash-lite',
         messages: apiMessages,
         temperature: 0.8,
-        max_tokens: 4096
+        max_tokens: 4096,
+        stream: stream
       })
     });
 
@@ -315,11 +316,57 @@ app.post('/api/chat', async (req, res) => {
       return res.status(response.status).json({ error: 'OpenRouter request failed.' });
     }
 
-    const data = await response.json();
-    return res.json(data);
+    // If not streaming, return JSON response
+    if (!stream) {
+      const data = await response.json();
+      return res.json(data);
+    }
+
+    // Set headers for streaming
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Stream the response
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              res.write(`data: [DONE]\n\n`);
+              res.end();
+              return;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              res.write(`data: ${JSON.stringify(parsed)}\n\n`);
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Streaming error:', error);
+      res.write(`data: ${JSON.stringify({ error: 'Streaming error' })}\n\n`);
+      res.end();
+    }
   } catch (error) {
     console.error('Server error:', error);
-    return res.status(500).json({ error: 'Unexpected server error.' });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Unexpected server error.' });
+    }
+    res.end();
   }
 });
 

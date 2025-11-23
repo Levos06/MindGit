@@ -1,0 +1,20 @@
+{
+  "id": "e0009d61-e013-4849-9312-458734dfd04b",
+  "title": "гармониками",
+  "parentId": "03566ef4-eaa8-4d42-ae58-b7f1b1cc0741",
+  "messages": [
+    {
+      "id": "052d0522-efc9-4e2e-a418-d746ee50f72e",
+      "role": "assistant",
+      "content": "гармониками: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?",
+      "highlights": [],
+      "disableHighlighting": true
+    }
+  ],
+  "pendingFragments": [],
+  "isExpanded": true,
+  "summary": "The user is asking for clarification on the term \"harmonics.\" The assistant is asking whether the user doesn't understand the term as a whole or has a specific question about a particular part of it.",
+  "originTerm": "гармониками",
+  "originHighlightId": "a49b203c-de2e-4a15-ae67-da801a82bd16",
+  "lastSummarizedMessageCount": 1
+}

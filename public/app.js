@@ -43,9 +43,6 @@ if (markdownParser?.setOptions) {
 
 // --- Initialization ---
 (async () => {
-  // Clear local storage as requested
-  localStorage.removeItem('deepminimal-history');
-  
   // Load from server
   await loadSessions();
   
@@ -54,13 +51,35 @@ if (markdownParser?.setOptions) {
     conversations = [activeConversation];
     // We don't save immediately to avoid cluttering disk with empty chats until used
   } else {
-    // Find a suitable active conversation or default to first root
-    // Currently just picking first loaded one, usually a root
-    activeConversation = conversations[0];
+    // Try to restore last active conversation from localStorage
+    const savedActiveId = localStorage.getItem('activeConversationId');
+    if (savedActiveId) {
+      const savedConversation = conversations.find(c => c.id === savedActiveId);
+      if (savedConversation) {
+        activeConversation = savedConversation;
+      } else {
+        // Fallback to first conversation if saved one not found
+        activeConversation = conversations[0];
+      }
+    } else {
+      // Default to first root conversation
+      activeConversation = conversations[0];
+    }
   }
   
-  updateHistory();
-  renderConversation();
+updateHistory();
+renderConversation();
+
+  // Restore scroll position
+  const savedScrollTop = localStorage.getItem(`scrollTop_${activeConversation.id}`);
+  if (savedScrollTop) {
+    requestAnimationFrame(() => {
+      chatStream.scrollTop = parseInt(savedScrollTop, 10);
+    });
+  } else {
+    scrollToBottom();
+  }
+  
   updateParentChatButton();
 })();
 
@@ -151,6 +170,11 @@ function showContextToast(show) {
 }
 
 async function switchConversation(newConversation) {
+  // Save scroll position of current conversation
+  if (activeConversation) {
+    localStorage.setItem(`scrollTop_${activeConversation.id}`, chatStream.scrollTop.toString());
+  }
+  
   // Only trigger summarization if we're actually switching AND there are new messages
   if (activeConversation && 
       activeConversation.id !== newConversation.id && 
@@ -162,8 +186,23 @@ async function switchConversation(newConversation) {
   }
 
   activeConversation = newConversation;
+  
+  // Save active conversation ID
+  localStorage.setItem('activeConversationId', activeConversation.id);
+  
   updateHistory();
   renderConversation();
+  
+  // Restore scroll position for new conversation
+  const savedScrollTop = localStorage.getItem(`scrollTop_${activeConversation.id}`);
+  if (savedScrollTop) {
+    requestAnimationFrame(() => {
+      chatStream.scrollTop = parseInt(savedScrollTop, 10);
+    });
+  } else {
+    scrollToBottom();
+  }
+  
   updateParentChatButton();
 }
 
@@ -196,7 +235,7 @@ form.addEventListener('submit', async (event) => {
 
   // If this is a new chat (not saved yet), save it now
   const isNew = !conversations.find(c => c.id === activeConversation.id && c.messages.length > 0);
-  
+
   appendMessage({ role: 'user', content });
   textarea.value = '';
   textareaAutoResize();
@@ -213,13 +252,24 @@ form.addEventListener('submit', async (event) => {
 
   const payload = [...activeConversation.messages];
 
+  // Create assistant message placeholder for streaming
+  const assistantMessage = {
+    id: crypto.randomUUID(),
+    role: 'assistant',
+    content: '',
+    highlights: []
+  };
+  activeConversation.messages.push(assistantMessage);
+  renderConversation();
+
   try {
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         messages: payload,
-        sessionId: activeConversation.id
+        sessionId: activeConversation.id,
+        stream: true
       })
     });
 
@@ -227,15 +277,29 @@ form.addEventListener('submit', async (event) => {
       throw new Error('Сервер недоступен');
     }
 
-    const data = await response.json();
-    const message = data.choices?.[0]?.message?.content || 'Нет ответа';
-    appendMessage({ role: 'assistant', content: message });
+    // Mark streaming as active and enable auto-scroll initially
+    isStreaming = true;
+    shouldAutoScroll = true;
+    lastScrollTop = chatStream.scrollTop;
     
-    // Save assistant reply
+    // Stream the response with smooth updates
+    await streamChatResponse(response, (content) => {
+      assistantMessage.content = content;
+      renderConversation();
+      // Auto-scroll if user hasn't scrolled up
+      if (shouldAutoScroll) {
+        scrollToBottom();
+      }
+    });
+    
+    // Save assistant reply after streaming completes
     await saveSession(activeConversation);
   } catch (error) {
-    appendMessage({ role: 'assistant', content: '⚠️ Ошибка: ' + error.message });
+    assistantMessage.content = '⚠️ Ошибка: ' + error.message;
+    renderConversation();
   } finally {
+    isStreaming = false;
+    shouldAutoScroll = true; // Reset for next message
     setLoading(false);
   }
 });
@@ -250,8 +314,6 @@ textarea.addEventListener('keydown', (event) => {
 chatStream.addEventListener('mouseup', handleSelection);
 chatStream.addEventListener('click', handleHighlightClick);
 deepDiveBtn.addEventListener('click', handleDeepDive);
-deepDiveBtn.addEventListener('click', handleDeepDive);
-deepDiveBtn.addEventListener('click', handleDeepDive);
 
 function appendMessage(message) {
   const messageEntry = {
@@ -263,6 +325,82 @@ function appendMessage(message) {
   activeConversation.messages.push(messageEntry);
   renderConversation();
   scrollToBottom();
+}
+
+// Smooth streaming with batched updates
+async function streamChatResponse(response, onChunk) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let fullContent = '';
+  let lastUpdateTime = performance.now();
+  let pendingUpdate = false;
+  let animationFrameId = null;
+  const UPDATE_INTERVAL = 16; // ~60fps for smooth updates
+
+  // Batch updates using requestAnimationFrame for smooth rendering
+  const scheduleUpdate = () => {
+    if (!pendingUpdate) {
+      pendingUpdate = true;
+      animationFrameId = requestAnimationFrame(() => {
+        onChunk(fullContent);
+        pendingUpdate = false;
+        lastUpdateTime = performance.now();
+      });
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') {
+            // Final update
+            if (animationFrameId) {
+              cancelAnimationFrame(animationFrameId);
+            }
+            onChunk(fullContent);
+            return fullContent;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) {
+              fullContent += delta;
+              // Schedule update with throttling for smooth rendering
+              const now = performance.now();
+              if (now - lastUpdateTime >= UPDATE_INTERVAL) {
+                scheduleUpdate();
+              } else if (!pendingUpdate) {
+                scheduleUpdate();
+              }
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
+        }
+      }
+    }
+
+    // Final update
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+    }
+    onChunk(fullContent);
+    return fullContent;
+  } catch (error) {
+    console.error('Streaming error:', error);
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+    }
+    throw error;
+  }
 }
 
 function renderConversation() {
@@ -290,40 +428,66 @@ function renderConversation() {
       
       bubble.appendChild(body);
 
-      // Add actions footer for assistant messages
+      // Add actions footer for all messages
+      const actions = document.createElement('div');
+      actions.className = 'message__actions';
+      
+      // Copy button (for all messages)
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'action-btn copy-btn';
+      copyBtn.title = 'Копировать сообщение';
+      copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+      copyBtn.onclick = (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(message.content).then(() => {
+          const originalHtml = copyBtn.innerHTML;
+          copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+          setTimeout(() => copyBtn.innerHTML = originalHtml, 2000);
+        });
+      };
+      actions.appendChild(copyBtn);
+      
+      // Highlight toggle button (only for assistant messages)
       if (message.role === 'assistant') {
-        const actions = document.createElement('div');
-        actions.className = 'message__actions';
-        
-        // Copy button
-        const copyBtn = document.createElement('button');
-        copyBtn.className = 'action-btn copy-btn';
-        copyBtn.title = 'Копировать сообщение';
-        copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-        copyBtn.onclick = () => {
-          navigator.clipboard.writeText(message.content).then(() => {
-            const originalHtml = copyBtn.innerHTML;
-            copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-            setTimeout(() => copyBtn.innerHTML = originalHtml, 2000);
-          });
-        };
-        
-        // Highlight toggle button
         const highlightToggleBtn = document.createElement('button');
         highlightToggleBtn.className = `action-btn highlight-toggle-btn ${message.disableHighlighting ? 'is-disabled' : 'is-active'}`;
         highlightToggleBtn.title = message.disableHighlighting ? 'Включить выделение терминов' : 'Отключить выделение терминов';
         highlightToggleBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>`;
         
-        highlightToggleBtn.onclick = () => {
+        highlightToggleBtn.onclick = async (e) => {
+          e.stopPropagation();
           message.disableHighlighting = !message.disableHighlighting;
-          saveSession(activeConversation); // Save state
-          renderConversation(); // Re-render to update UI and text selection behavior
+          
+          // Update button state without full re-render
+          highlightToggleBtn.className = `action-btn highlight-toggle-btn ${message.disableHighlighting ? 'is-disabled' : 'is-active'}`;
+          highlightToggleBtn.title = message.disableHighlighting ? 'Включить выделение терминов' : 'Отключить выделение терминов';
+          
+          // Update highlights visibility without full re-render
+          const body = bubble.querySelector('.message__body');
+          if (message.disableHighlighting) {
+            // Remove highlights - unwrap mark elements
+            body.querySelectorAll('mark[data-highlight-id]').forEach(mark => {
+              const parent = mark.parentNode;
+              while (mark.firstChild) {
+                parent.insertBefore(mark.firstChild, mark);
+              }
+              parent.removeChild(mark);
+              parent.normalize();
+            });
+          } else {
+            // Re-apply highlights
+            if (message.role === 'assistant' && message.highlights?.length) {
+              applyHighlightsToElement(body, message);
+            }
+          }
+          
+          await saveSession(activeConversation); // Save state
         };
 
-        actions.appendChild(copyBtn);
         actions.appendChild(highlightToggleBtn);
-        bubble.appendChild(actions);
       }
+      
+      bubble.appendChild(actions);
       
       return bubble;
     })
@@ -367,7 +531,7 @@ function renderTreeItem(conversation) {
       e.stopPropagation();
       conversation.isExpanded = !conversation.isExpanded;
       await saveSession(conversation); 
-      updateHistory();
+        updateHistory();
     };
     row.appendChild(toggle);
   } else {
@@ -397,11 +561,40 @@ function renderTreeItem(conversation) {
   return group;
 }
 
+let isStreaming = false;
+let shouldAutoScroll = true; // Track if we should auto-scroll during streaming
+let lastScrollTop = 0; // Track scroll position to detect upward scrolling
+
 function scrollToBottom() {
+  // During streaming, only auto-scroll if user hasn't scrolled up
+  if (isStreaming && !shouldAutoScroll) return;
+  
   requestAnimationFrame(() => {
     chatStream.scrollTop = chatStream.scrollHeight;
+    lastScrollTop = chatStream.scrollTop;
+    // Save scroll position
+    if (activeConversation) {
+      localStorage.setItem(`scrollTop_${activeConversation.id}`, chatStream.scrollTop.toString());
+    }
   });
 }
+
+// Save scroll position periodically and on scroll
+chatStream.addEventListener('scroll', () => {
+  const currentScrollTop = chatStream.scrollTop;
+  
+  // If user scrolls up during streaming (more than 10px to avoid false positives), disable auto-scroll
+  if (isStreaming && currentScrollTop < lastScrollTop - 10) {
+    shouldAutoScroll = false;
+  }
+  
+  lastScrollTop = currentScrollTop;
+  
+  // Save scroll position
+  if (activeConversation) {
+    localStorage.setItem(`scrollTop_${activeConversation.id}`, currentScrollTop.toString());
+  }
+});
 
 function setLoading(state) {
   sendBtn.disabled = state;
@@ -413,32 +606,37 @@ function handleSelection() {
   const range = selection.getRangeAt(0);
   const ancestor = range.commonAncestorContainer;
   const bubble = ancestor instanceof Element
-    ? ancestor.closest('.message--bot')
-    : ancestor?.parentElement?.closest('.message--bot');
+    ? ancestor.closest('.message--bot, .message--user')
+    : ancestor?.parentElement?.closest('.message--bot, .message--user');
 
   if (!bubble || !bubble.dataset.messageId) {
-    selection.removeAllRanges();
+    // Allow default selection behavior if not in a message bubble
     return;
   }
 
   if (!bubble.contains(range.startContainer) || !bubble.contains(range.endContainer)) {
-    selection.removeAllRanges();
+    // Allow default selection behavior if selection spans outside message
     return;
   }
 
   const message = activeConversation.messages.find((msg) => msg.id === bubble.dataset.messageId);
   if (!message) {
-    selection.removeAllRanges();
+    // Allow default selection behavior if message not found
     return;
   }
 
-  // If highlighting is disabled for this message, allow default selection behavior (copying, etc.)
+  // For user messages, always allow default selection behavior (copying, etc.)
+  if (message.role === 'user') {
+    return;
+  }
+
+  // If highlighting is disabled for assistant message, allow default selection behavior (copying, etc.)
   if (message.disableHighlighting) {
     return;
   }
 
+  // Only process highlighting for assistant messages
   if (message.role !== 'assistant') {
-    selection.removeAllRanges();
     return;
   }
 
@@ -453,7 +651,111 @@ function handleSelection() {
     return;
   }
 
-  const fragmentText = selection.toString().trim();
+  // Check if selection is within a KaTeX element (formula)
+  const katexElement = range.startContainer.nodeType === Node.TEXT_NODE
+    ? range.startContainer.parentElement?.closest('.katex, .katex-display')
+    : range.startContainer.closest('.katex, .katex-display');
+  
+  let fragmentText = selection.toString().trim();
+  let extractedFormulaText = null;
+  
+  // If selection is within a KaTeX element, extract the real formula text from message.content
+  if (katexElement) {
+    // Find the formula in message.content that corresponds to this KaTeX element
+    // Use the selection offsets to find which formula is at this position
+    const selectionStart = offsets.start;
+    const selectionEnd = offsets.end;
+    
+    // Find all formulas with their positions in the original text
+    const allFormulas = [];
+    
+    // Find block math formulas $$...$$
+    let blockMathMatch;
+    const blockMathRegex = /\$\$[\s\S]*?\$\$/g;
+    while ((blockMathMatch = blockMathRegex.exec(message.content)) !== null) {
+      const formulaStart = blockMathMatch.index;
+      const formulaEnd = formulaStart + blockMathMatch[0].length;
+      allFormulas.push({
+        start: formulaStart,
+        end: formulaEnd,
+        full: blockMathMatch[0],
+        type: 'block'
+      });
+    }
+    
+    // Find LaTeX block math \[...\]
+    let latexBlockMatch;
+    const latexBlockRegex = /\\\[[\s\S]*?\\\]/g;
+    while ((latexBlockMatch = latexBlockRegex.exec(message.content)) !== null) {
+      const formulaStart = latexBlockMatch.index;
+      const formulaEnd = formulaStart + latexBlockMatch[0].length;
+      allFormulas.push({
+        start: formulaStart,
+        end: formulaEnd,
+        full: latexBlockMatch[0],
+        type: 'latex-block'
+      });
+    }
+    
+    // Find inline math $...$
+    let inlineMatch;
+    const inlineRegex = /\$[^$\n]+\$/g;
+    while ((inlineMatch = inlineRegex.exec(message.content)) !== null) {
+      const content = inlineMatch[0].slice(1, -1).trim();
+      // Skip if it looks like currency
+      if (content.length > 0 && !/^\d/.test(content)) {
+        const formulaStart = inlineMatch.index;
+        const formulaEnd = formulaStart + inlineMatch[0].length;
+        allFormulas.push({
+          start: formulaStart,
+          end: formulaEnd,
+          full: inlineMatch[0],
+          type: 'inline'
+        });
+      }
+    }
+    
+    // Find LaTeX inline math \(...\)
+    let latexInlineMatch;
+    const latexInlineRegex = /\\\([\s\S]*?\\\)/g;
+    while ((latexInlineMatch = latexInlineRegex.exec(message.content)) !== null) {
+      const formulaStart = latexInlineMatch.index;
+      const formulaEnd = formulaStart + latexInlineMatch[0].length;
+      allFormulas.push({
+        start: formulaStart,
+        end: formulaEnd,
+        full: latexInlineMatch[0],
+        type: 'latex-inline'
+      });
+    }
+    
+    // Find the formula that contains or overlaps with the selection
+    const matchingFormula = allFormulas.find(formula => {
+      // Check if selection overlaps with formula
+      return (selectionStart >= formula.start && selectionStart < formula.end) ||
+             (selectionEnd > formula.start && selectionEnd <= formula.end) ||
+             (selectionStart <= formula.start && selectionEnd >= formula.end);
+    });
+    
+    if (matchingFormula) {
+      // Extract content without delimiters
+      if (matchingFormula.type === 'block') {
+        extractedFormulaText = matchingFormula.full.replace(/^\$\$|\$\$$/g, '').trim();
+      } else if (matchingFormula.type === 'latex-block') {
+        extractedFormulaText = matchingFormula.full.replace(/^\\\[|\\\]$/g, '').trim();
+      } else if (matchingFormula.type === 'inline') {
+        extractedFormulaText = matchingFormula.full.slice(1, -1).trim();
+      } else if (matchingFormula.type === 'latex-inline') {
+        extractedFormulaText = matchingFormula.full.replace(/^\\\(|\\\)$/g, '').trim();
+      }
+    }
+    
+    // Use extracted formula text if found, otherwise use rendered text
+    if (extractedFormulaText) {
+      fragmentText = extractedFormulaText;
+    }
+  }
+  
   if (!fragmentText) {
     selection.removeAllRanges();
     return;
@@ -532,11 +834,19 @@ function handleHighlightClick(e) {
       Math.max(0, highlight.end || 0)
     ).trim();
   
-  // Find child conversation with matching originTerm
-  const childConversation = conversations.find(c => 
+  // Find child conversation - first try by highlight ID (most accurate), then by text
+  let childConversation = conversations.find(c => 
     c.parentId === activeConversation.id && 
-    c.originTerm === highlightText
+    c.originHighlightId === highlightId
   );
+  
+  // Fallback to text matching if ID match not found
+  if (!childConversation) {
+    childConversation = conversations.find(c => 
+      c.parentId === activeConversation.id && 
+      c.originTerm === highlightText
+    );
+  }
   
   if (childConversation) {
     e.preventDefault();
@@ -654,10 +964,7 @@ function buildHighlightedMarkdown(text, highlights) {
     const fragment = text.slice(start, end);
     const trimmed = fragment.trim();
     
-    const hasChildChat = conversations.some(c =>
-      c.parentId === activeConversation.id &&
-      c.originTerm === trimmed
-    );
+    const hasChildChat = hasChildChatForHighlight(highlight.id, trimmed);
     const isPending = pendingSet.has(highlight.id);
     const clickableClass = hasChildChat ? ' highlight-clickable' : '';
     const pendingClass = isPending ? ' highlight--pending' : '';
@@ -687,10 +994,7 @@ function renderLegacyHighlightedText(text, highlights) {
     const end = Math.max(start, Math.min(highlight.end, text.length));
     const highlightText = text.slice(start, end).trim();
     
-    const hasChildChat = conversations.some(c => 
-      c.parentId === activeConversation.id && 
-      c.originTerm === highlightText
-    );
+    const hasChildChat = hasChildChatForHighlight(highlight.id, highlightText);
     const isPending = activeConversation.pendingFragments?.some(f => f.id === highlight.id);
     
     const clickableClass = hasChildChat ? ' highlight-clickable' : '';
@@ -725,7 +1029,16 @@ function toggleDeepDiveButton() {
   if (deepDiveBtn) {
     if (count > 0) {
       deepDiveBtn.hidden = false;
-      deepDiveBtn.textContent = `Углубиться в термины (${count})`;
+      // Creative formatting for count
+      let countText = '';
+      if (count === 1) {
+        countText = '1 термин';
+      } else if (count >= 2 && count <= 4) {
+        countText = `${count} термина`;
+      } else {
+        countText = `${count} терминов`;
+      }
+      deepDiveBtn.innerHTML = `Углубиться в <span class="dive-count">${countText}</span>`;
     } else {
       deepDiveBtn.hidden = true;
     }
@@ -742,27 +1055,96 @@ function updateParentChatButton() {
   }
 }
 
+async function generateChildChatInitialMessage(parentSummary, selectedText, sourceMessageText) {
+  const prompt = `Ты помогаешь пользователю углубиться в изучение термина или концепции. 
+
+Контекст родительского чата (краткое саммари):
+${parentSummary || 'Контекст недоступен'}
+
+Исходное сообщение, из которого был выделен фрагмент:
+${sourceMessageText || 'Контекст недоступен'}
+
+Пользователь выделил следующий фрагмент для углубленного изучения:
+${selectedText}
+
+Твоя задача: очень кратко (1-2 предложения) обрисовать этот термин/концепцию/фрагмент и проактивно пригласить пользователя к диалогу. Будь дружелюбным и заинтересованным. Предложи конкретные направления для обсуждения или задай открытый вопрос, который поможет начать диалог. Если в выделенном фрагменте есть формулы - обязательно продублируй их в своем сообщении.`;
+
+  try {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        messages: [{ role: 'user', content: prompt }],
+        sessionId: null, // No session for this one-off request
+        stream: false // No streaming for initial messages
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Сервер недоступен');
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || `${selectedText}: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?`;
+  } catch (error) {
+    console.error('Error generating initial message:', error);
+    // Fallback to default message
+    return `${selectedText}: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?`;
+  }
+}
+
 async function handleDeepDive() {
   const fragments = activeConversation.pendingFragments || [];
   if (!fragments.length) return;
 
-  const newConversations = fragments.map((fragment) => ({
-    id: crypto.randomUUID(),
-    title: fragment.text.slice(0, 32) || 'Термин',
-    pendingFragments: [],
-    parentId: activeConversation.id,
-    originTerm: fragment.text,
-    isExpanded: true,
-    summary: '',
-    messages: [
-      {
+  // Get parent summary
+  const parentSummary = activeConversation.summary || '';
+
+  // Show loading indicator in center of screen
+  const loadingOverlay = document.createElement('div');
+  loadingOverlay.className = 'loading-overlay';
+  loadingOverlay.innerHTML = '<div class="spinner"></div>';
+  document.body.appendChild(loadingOverlay);
+  
+  // Generate initial messages for all fragments
+  setLoading(true);
+  const newConversations = await Promise.all(
+    fragments.map(async (fragment) => {
+      // Find the source message that contains this fragment
+      const sourceMessage = activeConversation.messages.find(msg => msg.id === fragment.messageId);
+      const sourceMessageText = sourceMessage?.content || '';
+      
+      const initialMessage = await generateChildChatInitialMessage(
+        parentSummary, 
+        fragment.text,
+        sourceMessageText
+      );
+      
+      return {
         id: crypto.randomUUID(),
-        role: 'assistant',
-        content: `${fragment.text}: Вам не понятен термин целиком или есть конкретный вопрос по этому фрагменту?`,
-        highlights: []
-      }
-    ]
-  }));
+        title: fragment.text.slice(0, 32) || 'Термин',
+        pendingFragments: [],
+        parentId: activeConversation.id,
+        originTerm: fragment.text,
+        originHighlightId: fragment.id, // Save highlight ID for exact matching
+        isExpanded: true,
+        summary: '',
+        messages: [
+          {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: initialMessage,
+            highlights: []
+          }
+        ]
+      };
+    })
+  );
+
+  setLoading(false);
+  
+  // Remove loading indicator
+  loadingOverlay.remove();
 
   activeConversation.pendingFragments = [];
   activeConversation.isExpanded = true; 
@@ -787,13 +1169,31 @@ async function handleDeepDive() {
 
 // --- Graph Visualization ---
 
-graphToggle.addEventListener('click', () => {
+graphToggle.addEventListener('click', (e) => {
+  e.stopPropagation();
   graphCurtain.classList.toggle('is-open');
   if (graphCurtain.classList.contains('is-open')) {
     renderGraph();
     enableGraphDragging();
   }
 });
+
+// Close graph curtain when clicking outside
+document.addEventListener('click', (e) => {
+  if (graphCurtain && graphCurtain.classList.contains('is-open')) {
+    // Check if click is outside the curtain
+    if (!graphCurtain.contains(e.target) && !graphToggle.contains(e.target)) {
+      graphCurtain.classList.remove('is-open');
+    }
+  }
+});
+
+// Prevent closing when clicking inside the curtain
+if (graphCurtain) {
+  graphCurtain.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+}
 
 function renderGraph() {
   if (!graphContainer) return;
@@ -803,9 +1203,19 @@ function renderGraph() {
   // Clear existing content
   graphSvg.innerHTML = '';
   
-  // Build tree structure
-  const roots = conversations.filter(c => !c.parentId);
-  if (roots.length === 0) return;
+  if (!activeConversation) return;
+  
+  // Find the root conversation for the current active conversation
+  let rootConversation = activeConversation;
+  while (rootConversation.parentId) {
+    rootConversation = conversations.find(c => c.id === rootConversation.parentId);
+    if (!rootConversation) break;
+  }
+  
+  if (!rootConversation) return;
+  
+  // Build tree structure - only show the tree for the current root
+  const roots = [rootConversation];
   
   // Layout configuration
   const nodeWidth = 140;
@@ -1011,7 +1421,8 @@ function renderGraph() {
     fo.appendChild(div);
     group.appendChild(fo);
     
-    group.addEventListener('click', () => {
+    group.addEventListener('click', (e) => {
+      e.stopPropagation();
       switchConversation(node);
       graphCurtain.classList.remove('is-open');
     });
@@ -1109,12 +1520,30 @@ function findTextPosition(container, targetIndex) {
   return null;
 }
 
-function highlightHasChildChat(highlight) {
-  if (!highlight?.text) return false;
-  return conversations.some(c =>
-    c.parentId === activeConversation?.id &&
-    c.originTerm === highlight.text
+function hasChildChatForHighlight(highlightId, highlightText) {
+  if (!activeConversation) return false;
+  
+  // First try to find by highlight ID (most accurate)
+  const childById = conversations.find(c =>
+    c.parentId === activeConversation.id &&
+    c.originHighlightId === highlightId
   );
+  if (childById) return true;
+  
+  // Fallback to text matching
+  if (highlightText) {
+    return conversations.some(c =>
+      c.parentId === activeConversation.id &&
+      c.originTerm === highlightText
+    );
+  }
+  
+  return false;
+}
+
+function highlightHasChildChat(highlight) {
+  if (!highlight) return false;
+  return hasChildChatForHighlight(highlight.id, highlight.text);
 }
 
 function updateGraphPanLimits(containerWidth, containerHeight, svgWidth, svgHeight) {
