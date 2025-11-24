@@ -315,6 +315,35 @@ chatStream.addEventListener('mouseup', handleSelection);
 chatStream.addEventListener('click', handleHighlightClick);
 deepDiveBtn.addEventListener('click', handleDeepDive);
 
+// Handle hover on remove area (right part of pending highlights)
+chatStream.addEventListener('mousemove', (e) => {
+  const pendingMark = e.target.closest('mark.highlight--pending');
+  if (pendingMark) {
+    const rect = pendingMark.getBoundingClientRect();
+    const mouseX = e.clientX;
+    const markRight = rect.right;
+    
+    // If mouse is in the right 20px area
+    if (mouseX > markRight - 20) {
+      pendingMark.classList.add('is-hovering-remove');
+    } else {
+      pendingMark.classList.remove('is-hovering-remove');
+    }
+  } else {
+    // Remove class from all pending marks when not hovering
+    document.querySelectorAll('mark.highlight--pending.is-hovering-remove').forEach(mark => {
+      mark.classList.remove('is-hovering-remove');
+    });
+  }
+});
+
+chatStream.addEventListener('mouseleave', () => {
+  // Remove hover class when mouse leaves chat stream
+  document.querySelectorAll('mark.highlight--pending.is-hovering-remove').forEach(mark => {
+    mark.classList.remove('is-hovering-remove');
+  });
+});
+
 function appendMessage(message) {
   const messageEntry = {
     id: message.id ?? crypto.randomUUID(),
@@ -786,33 +815,42 @@ function handleSelection() {
 }
 
 function handleHighlightClick(e) {
-  // Handle remove button click
-  const removeBtn = e.target.closest('.highlight-remove-btn');
-  if (removeBtn) {
-    e.preventDefault();
-    e.stopPropagation();
+  // Handle click on remove area (the ::after pseudo-element area for pending highlights)
+  const pendingMark = e.target.closest('mark.highlight--pending');
+  if (pendingMark) {
+    // Check if click is in the right area (where ::after pseudo-element is)
+    const rect = pendingMark.getBoundingClientRect();
+    const clickX = e.clientX;
+    const markRight = rect.right;
     
-    const highlightId = removeBtn.dataset.highlightId;
-    if (!highlightId) return;
-    
-    const bubble = removeBtn.closest('.message--bot');
-    if (!bubble || !bubble.dataset.messageId) return;
-    
-    const message = activeConversation.messages.find(msg => msg.id === bubble.dataset.messageId);
-    if (!message) return;
-    
-    // Remove highlight from message
-    message.highlights = message.highlights?.filter(h => h.id !== highlightId) || [];
-    
-    // Remove from pending fragments
-    activeConversation.pendingFragments = activeConversation.pendingFragments?.filter(f => f.id !== highlightId) || [];
-    
-    saveSession(activeConversation);
-    renderConversation();
-    return;
+    // If click is in the right 20px area (where the remove area is)
+    if (clickX > markRight - 20) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const highlightId = pendingMark.dataset.highlightId;
+      if (!highlightId) return;
+      
+      const bubble = pendingMark.closest('.message--bot');
+      if (!bubble || !bubble.dataset.messageId) return;
+      
+      const message = activeConversation.messages.find(msg => msg.id === bubble.dataset.messageId);
+      if (!message) return;
+      
+      // Remove highlight from message
+      message.highlights = message.highlights?.filter(h => h.id !== highlightId) || [];
+      
+      // Remove from pending fragments
+      activeConversation.pendingFragments = activeConversation.pendingFragments?.filter(f => f.id !== highlightId) || [];
+      
+      saveSession(activeConversation);
+      renderConversation();
+      toggleDeepDiveButton();
+      return;
+    }
   }
   
-  // Handle click on highlighted text
+  // Handle click on highlighted text (for navigation to child chats)
   const mark = e.target.closest('mark[data-highlight-id]');
   if (!mark) return;
   
@@ -971,11 +1009,7 @@ function buildHighlightedMarkdown(text, highlights) {
     const title = hasChildChat ? 'Перейти в дочерний чат' : '';
     
     result += text.slice(cursor, start);
-    result += `<mark data-highlight-id="${highlight.id}" class="highlight${clickableClass}${pendingClass}" title="${title}">${fragment}`;
-    if (isPending) {
-      result += `<button class="highlight-remove-btn" data-highlight-id="${highlight.id}" title="Отменить выделение">×</button>`;
-    }
-    result += `</mark>`;
+    result += `<mark data-highlight-id="${highlight.id}" class="highlight${clickableClass}${pendingClass}" title="${title}">${fragment}</mark>`;
     cursor = end;
   });
 
@@ -1002,11 +1036,7 @@ function renderLegacyHighlightedText(text, highlights) {
     const title = hasChildChat ? 'Перейти в дочерний чат' : '';
     
     html += escapeHtml(text.slice(cursor, start));
-    html += `<mark data-highlight-id="${highlight.id}" class="highlight${clickableClass}${pendingClass}" title="${title}">${escapeHtml(text.slice(start, end))}`;
-    if (isPending) {
-      html += `<button class="highlight-remove-btn" data-highlight-id="${highlight.id}" title="Отменить выделение">×</button>`;
-    }
-    html += `</mark>`;
+    html += `<mark data-highlight-id="${highlight.id}" class="highlight${clickableClass}${pendingClass}" title="${title}">${escapeHtml(text.slice(start, end))}</mark>`;
     cursor = end;
   });
 
@@ -1491,15 +1521,7 @@ function applyHighlightsToElement(container, message) {
 
     const contents = range.extractContents();
     mark.appendChild(contents);
-
-    if (isPending) {
-      const button = document.createElement('button');
-      button.className = 'highlight-remove-btn';
-      button.dataset.highlightId = highlight.id;
-      button.title = 'Отменить выделение';
-      button.textContent = '×';
-      mark.appendChild(button);
-    }
+    // No button needed - the ::after pseudo-element handles the clickable area
 
     range.insertNode(mark);
   });
